@@ -1,0 +1,12 @@
+streamlit
+pandas
+numpy
+matplotlib
+plotly
+seaborn
+scikit-learn
+Pillow
+openpyxl
+mlxtend
+yellowbrick
+kneed
