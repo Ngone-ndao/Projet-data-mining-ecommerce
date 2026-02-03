@@ -20,6 +20,32 @@ import plotly.graph_objects as go
 import warnings
 warnings.filterwarnings('ignore')
 
+def fix_streamlit_display(df):
+    """
+    Corrige les problèmes d'affichage pour Streamlit
+    """
+    if df is None:
+        return df
+    
+    df_fixed = df.copy()
+    
+    # 1. Convertir toutes les colonnes 'object' en string
+    for col in df_fixed.select_dtypes(include=['object']).columns:
+        df_fixed[col] = df_fixed[col].astype(str)
+    
+    # 2. Spécialement pour StockCode (même si numérique)
+    if 'StockCode' in df_fixed.columns:
+        df_fixed['StockCode'] = df_fixed['StockCode'].astype(str)
+    
+    # 3. Spécialement pour Type
+    if 'Type' in df_fixed.columns:
+        df_fixed['Type'] = df_fixed['Type'].astype(str)
+    
+    # 4. Remplacer NaN par None (meilleur pour Streamlit)
+    df_fixed = df_fixed.replace({np.nan: None, pd.NaT: None})
+    
+    return df_fixed
+
 # ===============================
 # CONFIGURATION INITIALE ET STYLES
 # ===============================
@@ -292,6 +318,14 @@ def create_sidebar():
                     # Traitement selon le type de fichier
                     if uploaded_file.name.endswith('.xlsx'):
                         df_temp = pd.read_excel(uploaded_file)
+
+                        # Convertir StockCode en string si la colonne existe
+                        if 'StockCode' in df_temp.columns:
+                         df_temp['StockCode'] = df_temp['StockCode'].astype(str)
+            
+                        # Convertir Type en string si la colonne existe
+                        if 'Type' in df_temp.columns:
+                          df_temp['Type'] = df_temp['Type'].astype(str)
                         # Calculate 'Montant' and store in session state
                         df_temp['Montant'] = df_temp['Quantity'] * df_temp['UnitPrice']
                         st.session_state.df = df_temp
@@ -320,7 +354,7 @@ def create_sidebar():
         
         # Créer des boutons pour la navigation
         for label, key in menu_options.items():
-            if st.button(label, key=key, use_container_width=True):
+            if st.button(label, key=key, width="stretch"):
                 st.session_state.menu_choice = label
         
         st.markdown("---")
@@ -366,7 +400,7 @@ def description_data():
             st.subheader("Aperçu des Données")
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.dataframe(df.head(20), use_container_width=True)
+                st.dataframe(df.head(20), width="stretch")
             with col2:
                 st.metric("Lignes", f"{df.shape[0]:,}")
                 st.metric("Colonnes", df.shape[1])
@@ -380,7 +414,7 @@ def description_data():
                     'Valeurs Uniques': [df[col].nunique() for col in df.columns],
                     'Valeurs Null': df.isnull().sum().values
                 })
-                st.dataframe(col_info, use_container_width=True)
+                st.dataframe(col_info, width="stretch")
         
         with tab2:
             st.subheader("Statistiques Descriptives")
@@ -407,7 +441,7 @@ def description_data():
                     'max': '{:.2f}',
                     'skew': '{:.2f}',
                     'kurtosis': '{:.2f}'
-                }), use_container_width=True)
+                }), width="stretch")
                 
                 # Distribution des variables numériques
                 st.subheader("📈 Distributions")
@@ -416,7 +450,7 @@ def description_data():
                     fig = px.histogram(df, x=selected_col, nbins=50, 
                                       title=f"Distribution de {selected_col}",
                                       color_discrete_sequence=['#667eea'])
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width="stretch")
         
         with tab3:
             st.subheader("Analyse des Valeurs Manquantes")
@@ -445,7 +479,7 @@ def description_data():
                         title='Top 10 des colonnes avec valeurs manquantes',
                         color='% Manquant',
                         color_continuous_scale='Reds')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             
             # Bouton pour nettoyer les données
             if st.button("🧹 Nettoyer les données (supprimer les valeurs manquantes)", type="primary"):
@@ -474,7 +508,7 @@ def description_data():
                     data=csv,
                     file_name="donnees_nettoyees.csv",
                     mime="text/csv",
-                    use_container_width=True
+                    width="stretch"
                 )
             
             with col2:
@@ -487,7 +521,7 @@ def description_data():
                     data=output.getvalue(),
                     file_name="donnees_nettoyees.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
+                    width="stretch"
                 )
     else:
         st.warning("Veuillez d'abord importer un fichier de données.")
@@ -566,7 +600,7 @@ def visualize_data():
                 template='plotly_white'
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         
         with tab2:
             st.subheader("👥 Analyse des Clients")
@@ -590,7 +624,7 @@ def visualize_data():
                          color_continuous_scale='Viridis',
                          labels={'CA_Total': 'CA Total (€)', 'CustomerID': 'ID Client'})
             
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, width="stretch")
 
             # Comptage du nombre d'achats par client (nombre de factures uniques)
             clients_top_achats = (
@@ -635,7 +669,7 @@ def visualize_data():
                                    title='Distribution du CA par Client',
                                    labels={'value': 'CA Client (€)', 'count': 'Nombre de Clients'},
                                    color_discrete_sequence=['#764ba2'])
-                st.plotly_chart(fig3, use_container_width=True)
+                st.plotly_chart(fig3, width="stretch")
             
             with col2:
                 # Box plot du CA par client
@@ -643,7 +677,7 @@ def visualize_data():
                              title='Distribution du CA (Box Plot)',
                              labels={'Montant': 'CA Client (€)'},
                              color_discrete_sequence=['#667eea'])
-                st.plotly_chart(fig4, use_container_width=True)
+                st.plotly_chart(fig4, width="stretch")
         
         with tab3:
             st.subheader("🛒 Analyse des Produits")
@@ -668,7 +702,7 @@ def visualize_data():
                          labels={'CA_Produit': 'CA Produit (€)', 'Description': 'Produit'})
             
             fig1.update_layout(xaxis_tickangle=-45)
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, width="stretch")
 
             # Préparation des données pour les graphiques
             top_products = df.groupby("Description")["Quantity"].sum().sort_values(ascending=False).head(5).reset_index()
@@ -717,7 +751,7 @@ def visualize_data():
                                  color_continuous_scale='Viridis',
                                  log_x=True, log_y=True)
                 
-                st.plotly_chart(fig3, use_container_width=True)
+                st.plotly_chart(fig3, width="stretch")
                 st.caption("ℹ️ Note : Les retours et annulations (montants négatifs) ont été exclus de cette visualisation.")
             else:
                 st.warning("Aucune donnée positive disponible pour cette visualisation.")
@@ -754,7 +788,7 @@ def visualize_data():
             fig_bar.update_layout(showlegend=False)
             fig_bar.update_traces(textposition='outside')
 
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, width="stretch")
 
             st.caption(
               "ℹ️ Les produits sont regroupés par classes de prix (quartiles). "
@@ -783,7 +817,7 @@ def visualize_data():
                          color=ca_par_jour.values,
                          color_continuous_scale='Blues')
             
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, width="stretch")
             
             # Carte thermique jour/heure
             st.subheader("🔥 Carte Thermique des Ventes")
@@ -803,7 +837,7 @@ def visualize_data():
                             aspect='auto',
                             color_continuous_scale='YlOrRd')
             
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
             
             # Analyse par heure
             ca_par_heure = df.groupby('Heure')['Montant'].sum()
@@ -814,7 +848,7 @@ def visualize_data():
                           markers=True)
             
             fig3.update_layout(xaxis=dict(tickmode='linear', dtick=1))
-            st.plotly_chart(fig3, use_container_width=True)
+            st.plotly_chart(fig3, width="stretch")
 
 
              # Extraction du jour de la semaine
@@ -1051,7 +1085,7 @@ def modeling_and_predictions():
             "Δ Inertie": "{:.1f}",
             "% Δ": "{:.1f}%"
          }).apply(highlight_zone, axis=1),
-         use_container_width=True
+         width="stretch"
         )
      
 
@@ -1168,7 +1202,7 @@ def modeling_and_predictions():
                 'Score': '{:.4f}',
                 'Différence avec le meilleur': '{:.4f}'
             }).apply(highlight_best, axis=1),
-            use_container_width=True
+            width="stretch"
         )
         
         # Interprétation
@@ -1489,7 +1523,7 @@ def modeling_and_predictions():
             }).round(2)
             
             cluster_stats.columns = ['_'.join(col).strip() for col in cluster_stats.columns.values]
-            st.dataframe(cluster_stats, use_container_width=True)
+            st.dataframe(cluster_stats, width="stretch")
             
             # Profilage
             st.subheader("🎯 Profilage des Clusters")
@@ -1659,10 +1693,10 @@ def modeling_and_predictions():
                 legend_title="Type de Score"
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             
             # Affichage des données RFM
-            st.dataframe(rfm.head(20), use_container_width=True)
+            st.dataframe(rfm.head(20), width="stretch")
         
         with tab2:
             st.subheader("Segmentation des Clients")
@@ -1690,7 +1724,7 @@ def modeling_and_predictions():
                 showlegend=False
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             
             # Tableau des segments
             st.subheader("📋 Tableau des Segments")
@@ -1699,7 +1733,7 @@ def modeling_and_predictions():
             segments_table['% Total'] = (segments_table['Nombre de Clients'] / len(rfm) * 100).round(1)
             segments_table = segments_table.sort_values('Nombre de Clients', ascending=False)
             
-            st.dataframe(segments_table, use_container_width=True)
+            st.dataframe(segments_table, width="stretch")
         
         with tab3:
             st.subheader("Analyse des Segments")
@@ -1715,7 +1749,7 @@ def modeling_and_predictions():
             segment_stats.columns = ['_'.join(col).strip() for col in segment_stats.columns.values]
             segment_stats = segment_stats.reset_index()
             
-            st.dataframe(segment_stats, use_container_width=True)
+            st.dataframe(segment_stats, width="stretch")
             
             # Recommandations par segment
             st.subheader("🎯 Stratégies Marketing par Segment")
@@ -1775,7 +1809,7 @@ def modeling_and_predictions():
                     data=csv,
                     file_name="segmentation_rfm.csv",
                     mime="text/csv",
-                    use_container_width=True
+                    width="stretch"
                 )
             else:
                 output = io.BytesIO()
@@ -1786,7 +1820,7 @@ def modeling_and_predictions():
                     data=output.getvalue(),
                     file_name="segmentation_rfm.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
+                    width="stretch"
                 )
             
             # Résumé exécutif
@@ -1991,7 +2025,7 @@ def modeling_and_predictions():
                                         labels={'confidence': 'Confiance', 'lift': 'Lift', 'support': 'Support'},
                                         color_continuous_scale='Viridis')
                         
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, width="stretch")
                     
                     else:
                         st.warning(f"⚠️ Aucune recommandation trouvée pour '{selected_item}' avec les critères spécifiés.")
@@ -2017,7 +2051,7 @@ def modeling_and_predictions():
                                title='Distribution des Confiances',
                                labels={'confidence': 'Confiance', 'count': 'Nombre de Règles'},
                                color_discrete_sequence=['#667eea'])
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, width="stretch")
             
             # Top 10 règles par lift
             st.subheader("🏆 Top 10 des Meilleures Associations")
@@ -2029,7 +2063,7 @@ def modeling_and_predictions():
             display_rules['consequents'] = display_rules['consequents'].apply(lambda x: ', '.join(list(x)))
             
             st.dataframe(display_rules[['antecedents', 'consequents', 'confidence', 'lift', 'support']],
-                        use_container_width=True)
+                        width="stretch")
             
             # Graphique des top règles
             fig2 = px.bar(top_rules, x=top_rules.index, y='lift',
@@ -2042,7 +2076,7 @@ def modeling_and_predictions():
                                          tickvals=list(range(10)),
                                          ticktext=[f"Règle {i+1}" for i in range(10)]))
             
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
         
         with tab3:
             st.subheader("Paramètres Avancés de l'Analyse")
@@ -2199,7 +2233,7 @@ def Summary():
                 yaxis_title="Chiffre d'Affaires (€)"
             )
             
-            st.plotly_chart(fig_description_sales, use_container_width=True)
+            st.plotly_chart(fig_description_sales, width="stretch")
         
         with col_charts2:
         # Top 5 pays par CA
@@ -2223,7 +2257,7 @@ def Summary():
         xaxis_tickangle=45
         )
     
-        st.plotly_chart(fig_country_sales, use_container_width=True)
+        st.plotly_chart(fig_country_sales, width="stretch")
         
         st.markdown("---")
         
@@ -2249,7 +2283,7 @@ def Summary():
             hovermode='x unified'
         )
         
-        st.plotly_chart(fig_temporal, use_container_width=True)
+        st.plotly_chart(fig_temporal, width="stretch")
         
         
         st.markdown("### 👥 Segmentation RFM des Clients")
@@ -2393,7 +2427,7 @@ def Summary():
                 data=csv_summary,
                 file_name="resume_ventes.csv",
                 mime="text/csv",
-                use_container_width=True
+                width="stretch"
             )
         
         with col_export2:
@@ -2404,7 +2438,7 @@ def Summary():
                 data=csv_top_clients,
                 file_name="top_clients.csv",
                 mime="text/csv",
-                use_container_width=True
+                width="stretch"
             )
     
     else:
@@ -2425,7 +2459,7 @@ def about_us():
     # Image
     try:
         image = Image.open("e-commerce.jpg")
-        st.image(image, caption="E-commerce Analytics", use_container_width=True)
+        st.image(image, caption="E-commerce Analytics", width="stretch")
     except:
         st.info("L'image 'e-commerce.jpg' n'a pas été trouvée. Assurez-vous qu'elle est dans le répertoire courant.")
     
