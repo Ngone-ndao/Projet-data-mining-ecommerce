@@ -16,6 +16,7 @@ from sklearn.model_selection import train_test_split as tts
 from sklearn.metrics.cluster import adjusted_rand_score
 from sklearn.metrics import silhouette_score, silhouette_samples
 import re
+from sklearn.metrics import silhouette_score
 import plotly.graph_objects as go
 import warnings
 warnings.filterwarnings('ignore')
@@ -1097,7 +1098,6 @@ def modeling_and_predictions():
         # Barre de progression
         progress_bar_sil = st.progress(0)
         status_text_sil = st.empty()
-        from sklearn.metrics import silhouette_score
         silhouette_scores = []
         best_k = 5  # Valeur par défaut
         best_score = -1
@@ -2240,7 +2240,7 @@ def Summary():
          sales_by_country = df_selection.groupby(by=["Country"])[["Montant"]].sum().sort_values(
          by="Montant", ascending=False).head(5)
     
-         # CORRECTION : Utiliser une échelle de couleurs séquentielle valide
+        #Utiliser une échelle de couleurs séquentielle valide
          fig_country_sales = px.bar(
          sales_by_country.reset_index(),
          x="Country",
@@ -2298,7 +2298,7 @@ def Summary():
           Recence=('InvoiceDate', lambda date: (analysis_date - date.max()).days),
           Frequence=('InvoiceNo', 'nunique'),
           Montant=('Montant', 'sum')
-         ).reset_index()
+        ).reset_index()
 
          # Quartiles pour la segmentation
         quartiles = rfm_df[['Recence', 'Frequence', 'Montant']].quantile([0.25, 0.5, 0.75]).to_dict()
