@@ -16,41 +16,9 @@ from sklearn.model_selection import train_test_split as tts
 from sklearn.metrics.cluster import adjusted_rand_score
 from sklearn.metrics import silhouette_score, silhouette_samples
 import re
-from sklearn.metrics import silhouette_score
 import plotly.graph_objects as go
 import warnings
 warnings.filterwarnings('ignore')
-
-def safe_dataframe(df):
-    df_display = df.copy()
-    df_display.columns = df_display.columns.astype(str)
-    st.dataframe(df_display, width="stretch")
-
-
-def clean_dataframe_for_streamlit(df):
-    """
-    Nettoie un dataframe pour l'affichage Streamlit
-    """
-    if df is None or df.empty:
-        return df
-    
-    df_clean = df.copy()
-    
-    # Convertir toutes les colonnes problématiques
-    for col in df_clean.columns:
-        # Si c'est une colonne object, convertir en string
-        if df_clean[col].dtype == 'object':
-            df_clean[col] = df_clean[col].astype(str)
-    
-    # Colonnes spécifiques
-    for col in ['StockCode', 'Type', 'Description', 'Country']:
-        if col in df_clean.columns:
-            df_clean[col] = df_clean[col].astype(str)
-    
-    # Remplacer NaN
-    df_clean = df_clean.fillna('')
-    
-    return df_clean
 
 # ===============================
 # CONFIGURATION INITIALE ET STYLES
@@ -324,22 +292,6 @@ def create_sidebar():
                     # Traitement selon le type de fichier
                     if uploaded_file.name.endswith('.xlsx'):
                         df_temp = pd.read_excel(uploaded_file)
-
-                        # Convertir StockCode en string si la colonne existe
-                        if 'StockCode' in df_temp.columns:
-                           df_temp['StockCode'] = df_temp['StockCode'].astype(str)
-            
-                        # Convertir Type en string si la colonne existe
-                        if 'Type' in df_temp.columns:
-                            df_temp['Type'] = df_temp['Type'].astype(str)
-
-                          # 3. Convertir TOUTES les colonnes 'object' en string
-                        for col in df_temp.select_dtypes(include=['object']).columns:
-                            df_temp[col] = df_temp[col].astype(str)
-
-                          # 4. Remplacer NaN par None
-                        df_temp = df_temp.replace({np.nan: None})
-
                         # Calculate 'Montant' and store in session state
                         df_temp['Montant'] = df_temp['Quantity'] * df_temp['UnitPrice']
                         st.session_state.df = df_temp
@@ -368,7 +320,7 @@ def create_sidebar():
         
         # Créer des boutons pour la navigation
         for label, key in menu_options.items():
-            if st.button(label, key=key, width="stretch"):
+            if st.button(label, key=key, use_container_width=True):
                 st.session_state.menu_choice = label
         
         st.markdown("---")
@@ -394,7 +346,7 @@ def create_sidebar():
         """, unsafe_allow_html=True)
 
 # ===============================
-# DESCRIPTION DES DONNÉES 
+# DESCRIPTION DES DONNÉES (AMÉLIORÉE)
 # ===============================
 def description_data():
     st.markdown("""
@@ -414,7 +366,7 @@ def description_data():
             st.subheader("Aperçu des Données")
             col1, col2 = st.columns([3, 1])
             with col1:
-                safe_dataframe(df.head(20))
+                st.dataframe(df.head(20), use_container_width=True)
             with col2:
                 st.metric("Lignes", f"{df.shape[0]:,}")
                 st.metric("Colonnes", df.shape[1])
@@ -424,40 +376,47 @@ def description_data():
             with st.expander("📋 Informations sur les colonnes"):
                 col_info = pd.DataFrame({
                     'Colonne': df.columns,
-                    'Type': df.dtypes.astype(str).values,
+                    'Type': df.dtypes.values,
                     'Valeurs Uniques': [df[col].nunique() for col in df.columns],
                     'Valeurs Null': df.isnull().sum().values
                 })
-                safe_dataframe(col_info)
+                st.dataframe(col_info, use_container_width=True)
         
         with tab2:
             st.subheader("Statistiques Descriptives")
             
             # Sélection des colonnes numériques
-            num_cols = [col for col in ['Quantity', 'UnitPrice', 'Montant'] if col in df.columns]
-
+            num_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            if 'Montant' in df.columns:
+                num_cols = ['Quantity', 'UnitPrice', 'Montant']
             
             if num_cols:
-                 # Statistiques détaillées
+                # Statistiques détaillées
                 stats_df = df[num_cols].describe().T
                 stats_df['skew'] = df[num_cols].skew()
                 stats_df['kurtosis'] = df[num_cols].kurtosis()
-
-                  # Arrondir pour l'affichage
-                stats_df = stats_df.round(2)
-
-                  # Affichage sécurisé
-                safe_dataframe(stats_df)
+                
+                # Affichage avec mise en forme
+                st.dataframe(stats_df.style.format({
+                    'mean': '{:.2f}',
+                    'std': '{:.2f}',
+                    'min': '{:.2f}',
+                    '25%': '{:.2f}',
+                    '50%': '{:.2f}',
+                    '75%': '{:.2f}',
+                    'max': '{:.2f}',
+                    'skew': '{:.2f}',
+                    'kurtosis': '{:.2f}'
+                }), use_container_width=True)
                 
                 # Distribution des variables numériques
                 st.subheader("📈 Distributions")
                 selected_col = st.selectbox("Sélectionnez une variable", num_cols)
                 if selected_col:
-                    df_plot = df[[selected_col]].dropna()
-                    fig = px.histogram(df_plot, x=selected_col, nbins=50, 
+                    fig = px.histogram(df, x=selected_col, nbins=50, 
                                       title=f"Distribution de {selected_col}",
                                       color_discrete_sequence=['#667eea'])
-                    st.plotly_chart(fig, width="stretch")
+                    st.plotly_chart(fig, use_container_width=True)
         
         with tab3:
             st.subheader("Analyse des Valeurs Manquantes")
@@ -486,7 +445,7 @@ def description_data():
                         title='Top 10 des colonnes avec valeurs manquantes',
                         color='% Manquant',
                         color_continuous_scale='Reds')
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
             
             # Bouton pour nettoyer les données
             if st.button("🧹 Nettoyer les données (supprimer les valeurs manquantes)", type="primary"):
@@ -515,7 +474,7 @@ def description_data():
                     data=csv,
                     file_name="donnees_nettoyees.csv",
                     mime="text/csv",
-                    width="stretch"
+                    use_container_width=True
                 )
             
             with col2:
@@ -528,13 +487,13 @@ def description_data():
                     data=output.getvalue(),
                     file_name="donnees_nettoyees.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    width="stretch"
+                    use_container_width=True
                 )
     else:
         st.warning("Veuillez d'abord importer un fichier de données.")
 
 # ===============================
-# VISUALISATION AMÉLIORÉE 
+# VISUALISATION AMÉLIORÉE - CORRIGÉE
 # ===============================
 def visualize_data():
     st.markdown("""
@@ -607,7 +566,7 @@ def visualize_data():
                 template='plotly_white'
             )
             
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
         
         with tab2:
             st.subheader("👥 Analyse des Clients")
@@ -631,7 +590,7 @@ def visualize_data():
                          color_continuous_scale='Viridis',
                          labels={'CA_Total': 'CA Total (€)', 'CustomerID': 'ID Client'})
             
-            st.plotly_chart(fig1, width="stretch")
+            st.plotly_chart(fig1, use_container_width=True)
 
             # Comptage du nombre d'achats par client (nombre de factures uniques)
             clients_top_achats = (
@@ -676,7 +635,7 @@ def visualize_data():
                                    title='Distribution du CA par Client',
                                    labels={'value': 'CA Client (€)', 'count': 'Nombre de Clients'},
                                    color_discrete_sequence=['#764ba2'])
-                st.plotly_chart(fig3, width="stretch")
+                st.plotly_chart(fig3, use_container_width=True)
             
             with col2:
                 # Box plot du CA par client
@@ -684,7 +643,7 @@ def visualize_data():
                              title='Distribution du CA (Box Plot)',
                              labels={'Montant': 'CA Client (€)'},
                              color_discrete_sequence=['#667eea'])
-                st.plotly_chart(fig4, width="stretch")
+                st.plotly_chart(fig4, use_container_width=True)
         
         with tab3:
             st.subheader("🛒 Analyse des Produits")
@@ -709,7 +668,7 @@ def visualize_data():
                          labels={'CA_Produit': 'CA Produit (€)', 'Description': 'Produit'})
             
             fig1.update_layout(xaxis_tickangle=-45)
-            st.plotly_chart(fig1, width="stretch")
+            st.plotly_chart(fig1, use_container_width=True)
 
             # Préparation des données pour les graphiques
             top_products = df.groupby("Description")["Quantity"].sum().sort_values(ascending=False).head(5).reset_index()
@@ -758,7 +717,7 @@ def visualize_data():
                                  color_continuous_scale='Viridis',
                                  log_x=True, log_y=True)
                 
-                st.plotly_chart(fig3, width="stretch")
+                st.plotly_chart(fig3, use_container_width=True)
                 st.caption("ℹ️ Note : Les retours et annulations (montants négatifs) ont été exclus de cette visualisation.")
             else:
                 st.warning("Aucune donnée positive disponible pour cette visualisation.")
@@ -795,7 +754,7 @@ def visualize_data():
             fig_bar.update_layout(showlegend=False)
             fig_bar.update_traces(textposition='outside')
 
-            st.plotly_chart(fig_bar, width="stretch")
+            st.plotly_chart(fig_bar, use_container_width=True)
 
             st.caption(
               "ℹ️ Les produits sont regroupés par classes de prix (quartiles). "
@@ -824,7 +783,7 @@ def visualize_data():
                          color=ca_par_jour.values,
                          color_continuous_scale='Blues')
             
-            st.plotly_chart(fig1, width="stretch")
+            st.plotly_chart(fig1, use_container_width=True)
             
             # Carte thermique jour/heure
             st.subheader("🔥 Carte Thermique des Ventes")
@@ -844,7 +803,7 @@ def visualize_data():
                             aspect='auto',
                             color_continuous_scale='YlOrRd')
             
-            st.plotly_chart(fig2, width="stretch")
+            st.plotly_chart(fig2, use_container_width=True)
             
             # Analyse par heure
             ca_par_heure = df.groupby('Heure')['Montant'].sum()
@@ -855,7 +814,7 @@ def visualize_data():
                           markers=True)
             
             fig3.update_layout(xaxis=dict(tickmode='linear', dtick=1))
-            st.plotly_chart(fig3, width="stretch")
+            st.plotly_chart(fig3, use_container_width=True)
 
 
              # Extraction du jour de la semaine
@@ -912,199 +871,205 @@ def modeling_and_predictions():
         st.warning("Veuillez d'abord importer un fichier de données pour la modélisation.")
         return
     
-      # Menu de sélection du modèle
+    # Menu de sélection du modèle
     menu1 = ["👥 K-means", "⭐ Segmentation RFM", "🛒 FP_GROWTH"] 
     choix = st.sidebar.selectbox('Choisissez une méthode', menu1, key='modeling_menu_selection')
     
     # Préparation des données pour les modèles
     df['InvoiceDate'] = pd.to_datetime(df['InvoiceDate'])
     df_invoice = df.groupby(['InvoiceNo', 'InvoiceDate', 'CustomerID']).agg({
-           'Quantity': 'sum',
-           'Montant': 'sum'
-        }).reset_index()
+        'Quantity': 'sum',
+        'Montant': 'sum'
+    }).reset_index()
 
-         # Date d'analyse
+    # Date d'analyse
     analysis_date = df_invoice['InvoiceDate'].max() + timedelta(days=1)
     
-        # Section d'information
+    # Section d'information
     with st.expander("📊 Informations sur les données de modélisation", expanded=False):
-          st.write(f"**Date d'analyse :** {analysis_date.date()}")
-          st.write(f"**Période couverte :** {df['InvoiceDate'].min().date()} au {df['InvoiceDate'].max().date()}")
-          st.write(f"**Nombre de clients uniques :** {df['CustomerID'].nunique():,}")
-          st.write(f"**Nombre de transactions :** {df['InvoiceNo'].nunique():,}")
+        st.write(f"**Date d'analyse :** {analysis_date.date()}")
+        st.write(f"**Période couverte :** {df['InvoiceDate'].min().date()} au {df['InvoiceDate'].max().date()}")
+        st.write(f"**Nombre de clients uniques :** {df['CustomerID'].nunique():,}")
+        st.write(f"**Nombre de transactions :** {df['InvoiceNo'].nunique():,}")
     
     # K-MEANS 
     def kmeans_clustering(df_invoice, analysis_date):
+     st.markdown("""
+     <div style='background: #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
+         <h3 style='color: #1E3A8A; margin: 0;'>👥 Segmentation Client avec K-means</h3>
+         <p style='margin: 5px 0 0 0;'>Regroupement des clients en clusters basé sur leur comportement d'achat.</p>
+     </div>
+     """, unsafe_allow_html=True)
+     
+     with st.expander("ℹ️ Explication du modèle", expanded=False):
         st.markdown("""
-          <div style='background: #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
-            <h3 style='color: #1E3A8A; margin: 0;'>👥 Segmentation Client avec K-means</h3>
-          <p style='margin: 5px 0 0 0;'>Regroupement des clients en clusters basé sur leur comportement d'achat.</p>
-         </div>
-         """, unsafe_allow_html=True)
-     
-        with st.expander("ℹ️ Explication du modèle", expanded=False):
-          st.markdown("""
-            **K-means** est un algorithme de clustering non supervisé qui partitionne les données en K clusters.
+        **K-means** est un algorithme de clustering non supervisé qui partitionne les données en K clusters.
         
-            **Méthodes de sélection du nombre optimal de clusters :**
+        **Méthodes de sélection du nombre optimal de clusters :**
         
-           - **📉 Méthode du coude** : Analyse la diminution de l'inertie
-           - **📊 Score de silhouette** : Mesure la cohésion et séparation des clusters
-           - **⚖️ Score ARI** : Évalue la stabilité des clusters
-           """)
+        - **📉 Méthode du coude** : Analyse la diminution de l'inertie
+        - **📊 Score de silhouette** : Mesure la cohésion et séparation des clusters
+        - **⚖️ Score ARI** : Évalue la stabilité des clusters
+        """)
     
-          # Préparation des données 
-          base = df_invoice.groupby('CustomerID').agg({
-            'InvoiceDate': lambda x: (analysis_date - x.max()).days,
-            'InvoiceNo': 'nunique',
-            'Quantity': 'sum',
-            'Montant': 'sum'
-          }).rename(columns={
-           'InvoiceDate': 'Recence',
-           'InvoiceNo': 'Frequence',
-           'Quantity': 'Quantite_totale',
-           'Montant': 'Montant'
-        }).reset_index()
+     # Préparation des données 
+     base = df_invoice.groupby('CustomerID').agg({
+        'InvoiceDate': lambda x: (analysis_date - x.max()).days,
+        'InvoiceNo': 'nunique',
+        'Quantity': 'sum',
+        'Montant': 'sum'
+    }).rename(columns={
+        'InvoiceDate': 'Recence',
+        'InvoiceNo': 'Frequence',
+        'Quantity': 'Quantite_totale',
+        'Montant': 'Montant'
+    }).reset_index()
      
     
-        # Afficher quelques statistiques pour vérifier
-        with st.expander("📊 Vérification des données RFM"):
-          st.write(f"Nombre de clients: {len(base)}")
-          st.write(f"Moyenne Récence: {base['Recence'].mean():.1f} jours")
-          st.write(f"Moyenne Fréquence: {base['Frequence'].mean():.1f}")
-          st.write(f"Moyenne Montant: €{base['Montant'].mean():.2f}")
-          safe_dataframe(
-           base[['Recence', 'Frequence', 'Quantite_totale', 'Montant']].describe()
-       )
-
+     # Afficher quelques statistiques pour vérifier
+     with st.expander("📊 Vérification des données RFM"):
+        st.write(f"Nombre de clients: {len(base)}")
+        st.write(f"Moyenne Récence: {base['Recence'].mean():.1f} jours")
+        st.write(f"Moyenne Fréquence: {base['Frequence'].mean():.1f}")
+        st.write(f"Moyenne Montant: €{base['Montant'].mean():.2f}")
+        st.dataframe(base[['Recence', 'Frequence', 'Quantite_totale', 'Montant']].describe())
     
-         # Normalisation
-        scaler = StandardScaler()
-        base_scaled = scaler.fit_transform(base[['Recence', 'Frequence', 'Quantite_totale', 'Montant']])
+     # Normalisation
+     scaler = StandardScaler()
+     base_scaled = scaler.fit_transform(base[['Recence', 'Frequence', 'Quantite_totale', 'Montant']])
     
-         # Stocker dans session state pour accès global
-        st.session_state.kmeans_data = {
-          'base': base,
-          'base_scaled': base_scaled,
-          'scaler': scaler
-        }
-          # Vérifier la normalisation
-        st.success(f"✅ Données préparées: {len(base)} clients, 4 variables normalisées")
+     # Stocker dans session state pour accès global
+     st.session_state.kmeans_data = {
+        'base': base,
+        'base_scaled': base_scaled,
+        'scaler': scaler
+     }
+     # Vérifier la normalisation
+     st.success(f"✅ Données préparées: {len(base)} clients, 4 variables normalisées")
     
-        KMEANS_PARAMS = {
-          'init': 'k-means++',
-          'max_iter': 300,
-          'n_init': 10,
-          'random_state': 42,
-          'algorithm':'lloyd'
+     KMEANS_PARAMS = {
+        'init': 'k-means++',
+        'max_iter': 300,
+        'n_init': 10,
+        'random_state': 42,
+        'algorithm':'lloyd'
         
-           }
+    }
      
-        st.sidebar.info(f"🔧 Paramètres KMeans: {KMEANS_PARAMS}")
+     st.sidebar.info(f"🔧 Paramètres KMeans: {KMEANS_PARAMS}")
 
-      # Onglets pour l'analyse K-means
-        tab1, tab2, tab3, tab4 = st.tabs(["📉 Méthode du Coude", "📊 Score Silhouette", "👥 Clustering", "📋 Résultats"])
+     # Onglets pour l'analyse K-means
+     tab1, tab2, tab3, tab4 = st.tabs(["📉 Méthode du Coude", "📊 Score Silhouette", "👥 Clustering", "📋 Résultats"])
     
-        with tab1:
-           st.subheader("Méthode du Coude pour Déterminer k Optimal")
+     with tab1:
+      st.subheader("Méthode du Coude pour Déterminer k Optimal")
 
-           inertia = []
-           k_max = 15
+      inertia = []
+      k_max = 15
 
-           progress_bar = st.progress(0)
-           status_text = st.empty()
+      progress_bar = st.progress(0)
+      status_text = st.empty()
 
-           with st.spinner("Calcul de l'inertie pour différents k..."):
-             for k in range(1, k_max + 1):
-                status_text.text(f"Calcul pour k = {k}...")
-                kmeans = KMeans(n_clusters=k, **KMEANS_PARAMS)
+      with st.spinner("Calcul de l'inertie pour différents k..."):
+        for k in range(1, k_max + 1):
+            status_text.text(f"Calcul pour k = {k}...")
+            kmeans = KMeans(n_clusters=k, **KMEANS_PARAMS)
                 
             
-                kmeans.fit(base_scaled)
-                inertia.append(kmeans.inertia_)
-                progress_bar.progress(k / k_max)
+            kmeans.fit(base_scaled)
+            inertia.append(kmeans.inertia_)
+            progress_bar.progress(k / k_max)
 
-                status_text.text("✅ Calcul terminé")
+            status_text.text("✅ Calcul terminé")
 
-                # =======================
-                # 📊 GRAPHIQUE DU COUDE
-                # =======================
-             fig, ax = plt.subplots(figsize=(10, 7))
-             ax.plot(range(1, k_max + 1), inertia, marker='o', linewidth=2)
-             ax.set_xticks(range(1, k_max + 1))
-             ax.set_xlabel("Nombre de clusters (k)", fontsize=13)
-             ax.set_ylabel("Inertie", fontsize=13)
-             ax.set_title("Méthode du coude", fontsize=15, fontweight="bold")
-             ax.grid(alpha=0.3)
+          # =======================
+          # 📊 GRAPHIQUE DU COUDE
+          # =======================
+        fig, ax = plt.subplots(figsize=(10, 7))
+        ax.plot(range(1, k_max + 1), inertia, marker='o', linewidth=2)
+        ax.set_xticks(range(1, k_max + 1))
+        ax.set_xlabel("Nombre de clusters (k)", fontsize=13)
+        ax.set_ylabel("Inertie", fontsize=13)
+        ax.set_title("Méthode du coude", fontsize=15, fontweight="bold")
+        ax.grid(alpha=0.3)
 
-             # Zone recommandée
-             ax.axvspan(5, 6, color="orange", alpha=0.2, label="Zone optimale (5–6)")
-             ax.legend()
+        # Zone recommandée
+        ax.axvspan(5, 6, color="orange", alpha=0.2, label="Zone optimale (5–6)")
+        ax.legend()
 
-             st.pyplot(fig)
+        st.pyplot(fig)
 
-             # =======================
-             # 🧮 ANALYSE NUMÉRIQUE
-             # =======================
-             differences = np.diff(inertia)
-             ratios = differences[1:] / differences[:-1]
+        # =======================
+        # 🧮 ANALYSE NUMÉRIQUE
+        # =======================
+        differences = np.diff(inertia)
+        ratios = differences[1:] / differences[:-1]
 
-             elbow_auto = np.argmin(ratios) + 2  # coude mathématique
-             elbow_k = elbow_auto
+        elbow_auto = np.argmin(ratios) + 2  # coude mathématique
+        elbow_k = elbow_auto
 
-              # =======================
-              # 📝 INTERPRÉTATION
-              # =======================
-             st.subheader("📝 Interprétation de la méthode du coude")
+        # =======================
+        # 📝 INTERPRÉTATION
+        # =======================
+        st.subheader("📝 Interprétation de la méthode du coude")
 
-             st.markdown(f"""
-             *Analyse automatique :*
-             - Le premier ralentissement mathématique est détecté à *k = {elbow_auto}*
-             - Cette valeur correspond à une structure globale des données
+        st.markdown(f"""
+     *Analyse automatique :*
+      - Le premier ralentissement mathématique est détecté à *k = {elbow_auto}*
+      - Cette valeur correspond à une structure globale des données
 
-             *Analyse visuelle et métier :*
-             - La diminution de l'inertie reste significative jusqu'à *k = 5–6*
-             - À partir de *k ≥ 6*, le gain marginal devient faible
-             - Des valeurs de k inférieures (k ≤ 3) produisent une segmentation trop grossière
+     *Analyse visuelle et métier :*
+      - La diminution de l'inertie reste significative jusqu'à *k = 5–6*
+      - À partir de *k ≥ 6*, le gain marginal devient faible
+      - Des valeurs de k inférieures (k ≤ 3) produisent une segmentation trop grossière
 
-              ### ✅ Conclusion
-             > La méthode du coude suggère *une zone optimale comprise entre 5 et 6 clusters*,  
-             > offrant un bon compromis entre performance statistique et interprétabilité métier.
-             """)
+      ### ✅ Conclusion
+      > La méthode du coude suggère *une zone optimale comprise entre 5 et 6 clusters*,  
+      > offrant un bon compromis entre performance statistique et interprétabilité métier.
+      """)
 
-              # =======================
-              # 📋 TABLEAU RÉCAPITULATIF
-              # =======================
-             st.subheader("📊 Valeurs d'inertie")
-             inertia_df = pd.DataFrame({
-                 "k": range(1, k_max + 1),
-                 "Inertie": inertia,
-                 "Δ Inertie": [np.nan] + list(differences),
-                 "% Δ": [np.nan] + list((differences / inertia[:-1]) * 100)
-               })
+         # =======================
+         # 📋 TABLEAU RÉCAPITULATIF
+         # =======================
+        st.subheader("📊 Valeurs d'inertie")
+        inertia_df = pd.DataFrame({
+         "k": range(1, k_max + 1),
+         "Inertie": inertia,
+         "Δ Inertie": [np.nan] + list(differences),
+         "% Δ": [np.nan] + list((differences / inertia[:-1]) * 100)
+       })
 
-             def highlight_zone(row):
-                if row["k"] in [5, 6]:
-                 return ["background-color: #fff3cd"] * len(row)
-                return [""] * len(row)
+        def highlight_zone(row):
+         if row["k"] in [5, 6]:
+            return ["background-color: #fff3cd"] * len(row)
+         return [""] * len(row)
 
-             safe_dataframe(inertia_df.round(2))
+        st.dataframe(
+         inertia_df.style
+         .format({
+            "Inertie": "{:.0f}",
+            "Δ Inertie": "{:.1f}",
+            "% Δ": "{:.1f}%"
+         }).apply(highlight_zone, axis=1),
+         use_container_width=True
+        )
      
 
-        with tab2:
-          st.subheader("Score de silhouette pour validation")
+     with tab2:
+        st.subheader("Score de silhouette pour validation")
         
-          st.info("📊 Calcul des scores de silhouette en cours...")
+        st.info("📊 Calcul des scores de silhouette en cours...")
         
-           # Barre de progression
-          progress_bar_sil = st.progress(0)
-          status_text_sil = st.empty()
-          silhouette_scores = []
-          best_k = 5  # Valeur par défaut
-          best_score = -1
+        # Barre de progression
+        progress_bar_sil = st.progress(0)
+        status_text_sil = st.empty()
+        from sklearn.metrics import silhouette_score
+        silhouette_scores = []
+        best_k = 5  # Valeur par défaut
+        best_score = -1
         
         
-          for i in range(3, k_max + 1):
+        for i in range(3, k_max + 1):
             status_text_sil.text(f"Calcul du score silhouette pour k = {i}...")
             
             # UTILISER LES MÊMES PARAMÈTRES EXACTS
@@ -1120,57 +1085,57 @@ def modeling_and_predictions():
             
             progress_bar_sil.progress((i-1) / (k_max-1))
         
-          status_text_sil.text("✓ Calcul des scores de silhouette terminé!")
+        status_text_sil.text("✓ Calcul des scores de silhouette terminé!")
         
-          # Trouver le meilleur score
-          best_k_silhouette = best_k
-          best_score_silhouette = best_score
+        # Trouver le meilleur score
+        best_k_silhouette = best_k
+        best_score_silhouette = best_score
         
-          # Debug: Afficher tous les scores
-          with st.expander("🔍 Voir tous les scores de silhouette", expanded=False):
-             for k, score in zip(range(3, k_max + 1), silhouette_scores):
+        # Debug: Afficher tous les scores
+        with st.expander("🔍 Voir tous les scores de silhouette", expanded=False):
+            for k, score in zip(range(3, k_max + 1), silhouette_scores):
                 st.write(f"k = {k}: {score:.4f}")
         
-          # Visualisation
-          fig2, ax2 = plt.subplots()
-          fig2.set_size_inches(10, 7)
-          plt.rcParams['font.size'] = 14
+        # Visualisation
+        fig2, ax2 = plt.subplots()
+        fig2.set_size_inches(10, 7)
+        plt.rcParams['font.size'] = 14
         
-          ax2.plot(range(3, k_max + 1), silhouette_scores, 'o-', color='#E74C3C', linewidth=2, markersize=8)
-          ax2.set_xticks(np.arange(3, k_max + 1, 1))
-          ax2.set_title('Score de silhouette', fontsize=16, fontweight='bold', pad=20)
-          ax2.set_xlabel('Nombre de classes (k)', fontsize=14)
-          ax2.set_ylabel('Score de silhouette', fontsize=14)
-          ax2.grid(True, alpha=0.3)
+        ax2.plot(range(3, k_max + 1), silhouette_scores, 'o-', color='#E74C3C', linewidth=2, markersize=8)
+        ax2.set_xticks(np.arange(3, k_max + 1, 1))
+        ax2.set_title('Score de silhouette', fontsize=16, fontweight='bold', pad=20)
+        ax2.set_xlabel('Nombre de classes (k)', fontsize=14)
+        ax2.set_ylabel('Score de silhouette', fontsize=14)
+        ax2.grid(True, alpha=0.3)
         
-          # Marquer le meilleur score
-          ax2.axvline(x=best_k_silhouette, color='#27AE60', linestyle='--', alpha=0.7, linewidth=2)
-          ax2.plot(best_k_silhouette, best_score_silhouette, 'o', markersize=12, 
+        # Marquer le meilleur score
+        ax2.axvline(x=best_k_silhouette, color='#27AE60', linestyle='--', alpha=0.7, linewidth=2)
+        ax2.plot(best_k_silhouette, best_score_silhouette, 'o', markersize=12, 
                 markeredgecolor='black', markerfacecolor='#27AE60')
         
-            # Ajouter le texte du meilleur score
-          ax2.text(best_k_silhouette, best_score_silhouette + 0.01, 
+        # Ajouter le texte du meilleur score
+        ax2.text(best_k_silhouette, best_score_silhouette + 0.01, 
                 f'Optimal: k={best_k_silhouette}\nScore={best_score_silhouette:.3f}', 
                 color='#27AE60', ha='center', fontweight='bold', fontsize=12,
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9))
         
-             # Lignes de référence pour l'interprétation
-          ax2.axhline(y=0.5, color='gray', linestyle=':', alpha=0.5)
-          ax2.axhline(y=0.7, color='green', linestyle=':', alpha=0.5)
+        # Lignes de référence pour l'interprétation
+        ax2.axhline(y=0.5, color='gray', linestyle=':', alpha=0.5)
+        ax2.axhline(y=0.7, color='green', linestyle=':', alpha=0.5)
         
-           # Ajouter les valeurs sur le graphique
-          for i, (x, y) in enumerate(zip(range(3, k_max + 1), silhouette_scores)):
+        # Ajouter les valeurs sur le graphique
+        for i, (x, y) in enumerate(zip(range(3, k_max + 1), silhouette_scores)):
             if i in [0, 3, 4, 5, 8, 13]:  # Afficher des valeurs clés
                 ax2.text(x, y, f'{y:.3f}', fontsize=9, ha='center', va='bottom')
         
-          st.pyplot(fig2)
+        st.pyplot(fig2)
         
-          # Analyse détaillée
-          st.subheader("📊 Analyse des scores")
+        # Analyse détaillée
+        st.subheader("📊 Analyse des scores")
         
-          # Créer un tableau des scores
-          scores_data = []
-          for k, score in zip(range(3, k_max + 1), silhouette_scores):
+        # Créer un tableau des scores
+        scores_data = []
+        for k, score in zip(range(3, k_max + 1), silhouette_scores):
             interpretation = ""
             if score >= 0.7:
                 interpretation = "Structure forte 🟢"
@@ -1188,83 +1153,83 @@ def modeling_and_predictions():
                 'Différence avec le meilleur': best_score_silhouette - score
             })
         
-          scores_df = pd.DataFrame(scores_data)
+        scores_df = pd.DataFrame(scores_data)
         
-           # Mettre en évidence le meilleur
-          def highlight_best(row):
+        # Mettre en évidence le meilleur
+        def highlight_best(row):
             if row['k'] == best_k_silhouette:
                 return ['background-color: #d4edda' for _ in range(len(row))]
             elif row['Score'] >= 0.5:
                 return ['background-color: #fff3cd' for _ in range(len(row))]
             return [''] * len(row)
         
-          st.dataframe(
+        st.dataframe(
             scores_df.style.format({
                 'Score': '{:.4f}',
                 'Différence avec le meilleur': '{:.4f}'
             }).apply(highlight_best, axis=1),
-            width="stretch"
-          )
+            use_container_width=True
+        )
         
-           # Interprétation
-          st.subheader("🎯 Interprétation")
+        # Interprétation
+        st.subheader("🎯 Interprétation")
         
-          interpretation_text = ""
-          if best_score_silhouette >= 0.7:
-              interpretation_text = "**Excellente** structure de clusters"
-          elif best_score_silhouette >= 0.5:
-              interpretation_text = "**Bonne** structure de clusters"
-          elif best_score_silhouette >= 0.25:
-              interpretation_text = "Structure **faible** mais acceptable"
-          else:
-              interpretation_text = "Structure **inappropriée**"
+        interpretation_text = ""
+        if best_score_silhouette >= 0.7:
+            interpretation_text = "**Excellente** structure de clusters"
+        elif best_score_silhouette >= 0.5:
+            interpretation_text = "**Bonne** structure de clusters"
+        elif best_score_silhouette >= 0.25:
+            interpretation_text = "Structure **faible** mais acceptable"
+        else:
+            interpretation_text = "Structure **inappropriée**"
         
-          st.markdown(f"""
-          **Résultats :**
-          - **Meilleur k** : {best_k_silhouette}
-          - **Score optimal** : {best_score_silhouette:.4f}
-          - **Interprétation** : {interpretation_text}
+        st.markdown(f"""
+        **Résultats :**
+        - **Meilleur k** : {best_k_silhouette}
+        - **Score optimal** : {best_score_silhouette:.4f}
+        - **Interprétation** : {interpretation_text}
         
-          **Signification :**
-          Pour k = {best_k_silhouette}, le score de silhouette est maximal, ce qui signifie :
-          1. **Bonne cohésion** : Les points dans chaque cluster sont proches
-          2. **Bonne séparation** : Les clusters sont bien distincts
-          3. **Structure optimale** : Le partitionnement est le plus cohérent
+        **Signification :**
+        Pour k = {best_k_silhouette}, le score de silhouette est maximal, ce qui signifie :
+        1. **Bonne cohésion** : Les points dans chaque cluster sont proches
+        2. **Bonne séparation** : Les clusters sont bien distincts
+        3. **Structure optimale** : Le partitionnement est le plus cohérent
         
-          **Validation :**
-          > Le score de silhouette confirme que **k = {best_k_silhouette}** est le choix optimal
-          """)
+        **Validation :**
+        > Le score de silhouette confirme que **k = {best_k_silhouette}** est le choix optimal
+        """)
         
-          # Synthèse avec la méthode du coude
-          st.subheader("🔍 Synthèse des deux méthodes")
+        # Synthèse avec la méthode du coude
+        st.subheader("🔍 Synthèse des deux méthodes")
         
-          # Utiliser le coude calculé précédemment
-          if 'elbow_k' in locals():
-             coude_k = elbow_k
-          else:
-             # Calculer un coude approximatif si non calculé
-             coude_k = 5  # Valeur par défaut basée sur votre analyse
+        # Utiliser le coude calculé précédemment
+        if 'elbow_k' in locals():
+            coude_k = elbow_k
+        else:
+            # Calculer un coude approximatif si non calculé
+            coude_k = 5  # Valeur par défaut basée sur votre analyse
         
-             # Déterminer la recommandation finale
-          if abs(coude_k - best_k_silhouette) <= 1:
-              # Les méthodes concordent (différence de 1 ou moins)
-             final_k = best_k_silhouette
+        # Déterminer la recommandation finale
+        if abs(coude_k - best_k_silhouette) <= 1:
+            # Les méthodes concordent (différence de 1 ou moins)
+            final_k = best_k_silhouette
             
-             st.success(f"""
-             ✅ **Convergence parfaite des méthodes !**
+            st.success(f"""
+            ✅ **Convergence parfaite des méthodes !**
             
-              **1. Méthode du coude :**
-              - Suggère un intervalle optimal : **k = {coude_k}**
-              - Point où l'inertie diminue moins significativement
+            **1. Méthode du coude :**
+            - Suggère un intervalle optimal : **k = {coude_k}**
+            - Point où l'inertie diminue moins significativement
             
-              **2. Score de silhouette :**
-              - Optimal à **k = {best_k_silhouette}**
-              - Score : **{best_score_silhouette:.4f}** (structure {'forte' if best_score_silhouette >= 0.7 else 'raisonnable'})
+            **2. Score de silhouette :**
+            - Optimal à **k = {best_k_silhouette}**
+            - Score : **{best_score_silhouette:.4f}** (structure {'forte' if best_score_silhouette >= 0.7 else 'raisonnable'})
             
-              **🎯 Décision finale :**
-              > En combinant les deux approches, le nombre de clusters retenu est **k = {final_k}**
-              """)
-          else:
+            **🎯 Décision finale :**
+            > En combinant les deux approches, le nombre de clusters retenu est **k = {final_k}**
+            """)
+        else:
             st.warning(f"""
             ⚠️ **Attention : Divergence entre les méthodes**
             
@@ -1275,48 +1240,48 @@ def modeling_and_predictions():
             """)
             final_k = best_k_silhouette
         
-          # Stocker pour les autres onglets
-          st.session_state.optimal_k = final_k
-          st.session_state.best_silhouette_score = best_score_silhouette
+        # Stocker pour les autres onglets
+        st.session_state.optimal_k = final_k
+        st.session_state.best_silhouette_score = best_score_silhouette
         
-          st.success(f"✅ **k optimal déterminé : {final_k}** (stocké pour les étapes suivantes)")
+        st.success(f"✅ **k optimal déterminé : {final_k}** (stocké pour les étapes suivantes)")
     
     
-        with tab3:
-          st.subheader("Application du Clustering K-means")
+     with tab3:
+        st.subheader("Application du Clustering K-means")
         
         
-          # Utiliser le k déterminé
-          if 'optimal_k' in st.session_state:
-             optimal_k = st.session_state.optimal_k
-          else:
-             optimal_k = 6  # Valeur par défaut basée sur votre analyse
+        # Utiliser le k déterminé
+        if 'optimal_k' in st.session_state:
+            optimal_k = st.session_state.optimal_k
+        else:
+            optimal_k = 6  # Valeur par défaut basée sur votre analyse
         
-          st.write(f"**Nombre de clusters sélectionné : k = {optimal_k}**")
+        st.write(f"**Nombre de clusters sélectionné : k = {optimal_k}**")
         
-          # Permettre l'ajustement
-          n_clusters_selected = st.slider(
-             "Ajustez k si nécessaire :", 
-             min_value=2, 
-             max_value=15, 
-             value=optimal_k,
-             key="k_slider"
-           )
+        # Permettre l'ajustement
+        n_clusters_selected = st.slider(
+            "Ajustez k si nécessaire :", 
+            min_value=2, 
+            max_value=15, 
+            value=optimal_k,
+            key="k_slider"
+        )
         
-           # Appliquer K-means avec le k sélectionné
-          with st.spinner(f"Application du clustering avec k={n_clusters_selected}..."):
+        # Appliquer K-means avec le k sélectionné
+        with st.spinner(f"Application du clustering avec k={n_clusters_selected}..."):
             model = KMeans(n_clusters=n_clusters_selected, **KMEANS_PARAMS)
             model_kmeans = model.fit(base_scaled)
             labels = model_kmeans.labels_
             base['cluster'] = labels
         
-          # Bouton
-          apply_text = f"🚀 Appliquer K-means avec k={n_clusters_selected}"
-          if 'recommended_k' in st.session_state and n_clusters_selected == st.session_state.recommended_k:
-             apply_text += " (recommandé)"
+        # Bouton
+        apply_text = f"🚀 Appliquer K-means avec k={n_clusters_selected}"
+        if 'recommended_k' in st.session_state and n_clusters_selected == st.session_state.recommended_k:
+            apply_text += " (recommandé)"
         
-          if st.button(apply_text, type="primary", key="apply_kmeans"):
-             with st.spinner("Clustering en cours..."):
+        if st.button(apply_text, type="primary", key="apply_kmeans"):
+            with st.spinner("Clustering en cours..."):
                 model = KMeans(
                     n_clusters=n_clusters_selected, 
                     init='k-means++', 
@@ -1347,187 +1312,189 @@ def modeling_and_predictions():
                 st.success(f"✅ Clustering terminé ! {n_clusters_selected} clusters créés.")
                 st.info(f"📊 Score Silhouette final : {silhouette_avg:.3f}")
         
-                 # Visualisation
-                if 'kmeans_results' in st.session_state:
-                  base_result = st.session_state.kmeans_results['base']
-                  n_clusters_used = st.session_state.kmeans_results['n_clusters']
+        # Visualisation
+        if 'kmeans_results' in st.session_state:
+            base_result = st.session_state.kmeans_results['base']
+            n_clusters_used = st.session_state.kmeans_results['n_clusters']
             
-                  st.subheader("Visualisation des Clusters")
+            st.subheader("Visualisation des Clusters")
             
-                  colonnes = ['Montant', 'Recence', 'Frequence', 'Quantite_totale']
-                  col1, col2 = st.columns(2)
+            colonnes = ['Montant', 'Recence', 'Frequence', 'Quantite_totale']
+            col1, col2 = st.columns(2)
             
-                with col1:
-                   abscisses = st.selectbox("Variable pour l'axe X", colonnes, index=0, key="x_axis")
-                with col2:
-                  ordonnees = st.selectbox("Variable pour l'axe Y", colonnes, index=1, key="y_axis")
+            with col1:
+                abscisses = st.selectbox("Variable pour l'axe X", colonnes, index=0, key="x_axis")
+            with col2:
+                ordonnees = st.selectbox("Variable pour l'axe Y", colonnes, index=1, key="y_axis")
             
-                  fig, ax = plt.subplots(figsize=(10, 6))
-                  scatter = ax.scatter(base_result[abscisses], base_result[ordonnees], 
+            fig, ax = plt.subplots(figsize=(10, 6))
+            scatter = ax.scatter(base_result[abscisses], base_result[ordonnees], 
                                 c=base_result['cluster'], cmap='Set1', s=50, alpha=0.7)
-                  ax.set_xlabel(abscisses, fontsize=12)
-                  ax.set_ylabel(ordonnees, fontsize=12)
-                  ax.set_title(f'Clusters K-means (k={n_clusters_used})', fontsize=14, fontweight='bold')
-                  ax.grid(True, alpha=0.3)
-                  legend1 = ax.legend(*scatter.legend_elements(), title="Clusters")
-                  ax.add_artist(legend1)
-                  st.pyplot(fig)
+            ax.set_xlabel(abscisses, fontsize=12)
+            ax.set_ylabel(ordonnees, fontsize=12)
+            ax.set_title(f'Clusters K-means (k={n_clusters_used})', fontsize=14, fontweight='bold')
+            ax.grid(True, alpha=0.3)
+            legend1 = ax.legend(*scatter.legend_elements(), title="Clusters")
+            ax.add_artist(legend1)
+            st.pyplot(fig)
 
-                  # Analyse de stabilité simplifiée
-                  st.subheader("📈 Analyse de Stabilité")
+            # Analyse de stabilité simplifiée
+            st.subheader("📈 Analyse de Stabilité")
             
-                if st.button("Analyser la stabilité", type="secondary", key="analyze_stability"):
-                  with st.spinner("Analyse de stabilité en cours..."):
-                    try:
-                     # Exécuter K-means plusieurs fois avec différentes initialisations
-                      n_init = 10
-                      ari_scores = []
+            if st.button("Analyser la stabilité", type="secondary", key="analyze_stability"):
+             with st.spinner("Analyse de stabilité en cours..."):
+               try:
+                 # Exécuter K-means plusieurs fois avec différentes initialisations
+                 n_init = 10
+                 ari_scores = []
 
-                      for _ in range(n_init):
-                        kmeans = KMeans(n_clusters=n_clusters_used, random_state=None)
-                        labels = kmeans.fit_predict(base_scaled)
-                        ari_scores.append(labels)
+                 for _ in range(n_init):
+                  # Initialisation et exécution de K-means
+                  kmeans = KMeans(n_clusters=n_clusters_used)
+                  labels = kmeans.fit_predict(base_scaled)
+                  # Calcul de l'indice ARI
+                  ari_scores.append(labels)
 
-                        similarities = []
-                        for i in range(len(ari_scores)-1):
-                          similarities.append(
-                          adjusted_rand_score(ari_scores[i], ari_scores[i+1])
-                )
+                 # Calcul de la matrice de similarité
+                 similarity_matrix = np.zeros((n_init, n_init))
+                 for i in range(n_init):
+                  for j in range(n_init):
+                    similarity_matrix[i, j] = adjusted_rand_score(ari_scores[i], ari_scores[j])
 
-                        stability = np.mean(similarities)
-
+                 # Calcul de la stabilité moyenne
+                 stability = np.mean(similarity_matrix)
             
-                        st.write(f"**Stabilité de K-means :** {stability:.3f}")
-                        if stability > 0.8:
-                          st.success("✅ Excellente stabilité")
-                        elif stability > 0.6:
-                          st.info("📊 Bonne stabilité")
-                        elif stability > 0.4:
-                          st.warning("⚠️ Stabilité modérée")
-                        else:
-                          st.error("❌ Faible stabilité")
+                 st.write(f"**Stabilité de K-means :** {stability:.3f}")
+                 if stability > 0.8:
+                  st.success("✅ Excellente stabilité")
+                 elif stability > 0.6:
+                  st.info("📊 Bonne stabilité")
+                 elif stability > 0.4:
+                  st.warning("⚠️ Stabilité modérée")
+                 else:
+                  st.error("❌ Faible stabilité")
             
-                         # Graphique de la stabilité
-                        fig_stab, ax_stab = plt.subplots(figsize=(10, 4))
-                        ax_stab.plot(range(1, n_init + 1), np.diag(similarities), 'o-', color='#667eea')
-                        ax_stab.set_xlabel('Initialisation')
-                        ax_stab.set_ylabel('Score ARI')
-                        ax_stab.set_title(f'Stabilité pour k={n_clusters_used}')
-                        ax_stab.grid(alpha=0.3)
-                        st.pyplot(fig_stab)
+                 # Graphique de la stabilité
+                 fig_stab, ax_stab = plt.subplots(figsize=(10, 4))
+                 ax_stab.plot(range(1, n_init + 1), np.diag(similarity_matrix), 'o-', color='#667eea')
+                 ax_stab.set_xlabel('Initialisation')
+                 ax_stab.set_ylabel('Score ARI')
+                 ax_stab.set_title(f'Stabilité pour k={n_clusters_used}')
+                 ax_stab.grid(alpha=0.3)
+                 st.pyplot(fig_stab)
             
-                    except Exception as e:
-                      st.error(f"Erreur lors de l'analyse de stabilité : {str(e)}")
+               except Exception as e:
+                st.error(f"Erreur lors de l'analyse de stabilité : {str(e)}")
 
-                  # Contrat de maintenance
-                      st.subheader("Contrat de maintenance")
-                    try:
-                      ARI_score = pd.read_csv("ARI_kmeans.csv")
-                      st.write("Score ARI pour chaque semaine :")
-                      st.dataframe(ARI_score)
-                      ARI_scores = ARI_score['ARI'].tolist()
+             # Contrat de maintenance
+             st.subheader("Contrat de maintenance")
+             try:
+               ARI_score = pd.read_csv("ARI_kmeans.csv")
+               st.write("Score ARI pour chaque semaine :")
+               st.dataframe(ARI_score)
+               ARI_scores = ARI_score['ARI'].tolist()
 
-                     # Paramètres de style
-                      sns.set(rc={'figure.figsize': (10, 6)})
+               # Paramètres de style
+               sns.set(rc={'figure.figsize': (10, 6)})
 
-                      # Création de la figure
-                      fig, ax = plt.subplots()
+               # Création de la figure
+               fig, ax = plt.subplots()
 
-                      # Tracé de la courbe
-                      sns.lineplot(x=range(1, len(ARI_scores) + 1), y=ARI_scores, ax=ax)
-                      ax.axvline(6, c='red', ls='--')
+               # Tracé de la courbe
+               sns.lineplot(x=range(1, len(ARI_scores) + 1), y=ARI_scores, ax=ax)
+               ax.axvline(6, c='red', ls='--')
 
-                      # Personnalisation
-                      ax.set_title('Évolution du score ARI')
-                      ax.set_xlabel('Semaines')
-                      ax.set_ylabel('Score ARI')
-                      ax.set_xticks(range(1, len(ARI_scores) + 1))
-                      # Affichage dans Streamlit
-                      st.pyplot(fig)
+               # Personnalisation
+               ax.set_title('Évolution du score ARI')
+               ax.set_xlabel('Semaines')
+               ax.set_ylabel('Score ARI')
+               ax.set_xticks(range(1, len(ARI_scores) + 1))
+               # Affichage dans Streamlit
+               st.pyplot(fig)
     
-                    except FileNotFoundError:
-                      st.  warning("⚠️ Fichier ARI_kmeans.csv non trouvé. Affichage d'un exemple.")
+             except FileNotFoundError:
+              st.warning("⚠️ Fichier ARI_kmeans.csv non trouvé. Affichage d'un exemple.")
     
-                     # Créer des données d'exemple
-                      example_scores = [0.95, 0.93, 0.92, 0.91, 0.90, 0.89, 0.88, 0.87, 0.86, 0.85, 0.84, 0.83]
+              # Créer des données d'exemple
+              example_scores = [0.95, 0.93, 0.92, 0.91, 0.90, 0.89, 0.88, 0.87, 0.86, 0.85, 0.84, 0.83]
     
-                      fig, ax = plt.subplots(figsize=(10, 6))
-                      ax.plot(range(1, len(example_scores) + 1), example_scores, 'o-', color='#667eea')
-                      ax.axvline(6, c='red', ls='--', label='Maintenance prévue')
-                      ax.set_title('Exemple: Évolution du score ARI')
-                      ax.set_xlabel('Semaines')
-                      ax.set_ylabel('Score ARI')
-                      ax.set_xticks(range(1, len(example_scores) + 1))
-                      ax.grid(alpha=0.3)
-                      ax.legend()
-                      st.pyplot(fig)
+              fig, ax = plt.subplots(figsize=(10, 6))
+              ax.plot(range(1, len(example_scores) + 1), example_scores, 'o-', color='#667eea')
+              ax.axvline(6, c='red', ls='--', label='Maintenance prévue')
+              ax.set_title('Exemple: Évolution du score ARI')
+              ax.set_xlabel('Semaines')
+              ax.set_ylabel('Score ARI')
+              ax.set_xticks(range(1, len(example_scores) + 1))
+              ax.grid(alpha=0.3)
+              ax.legend()
+              st.pyplot(fig)
 
-                     # Recommandations de maintenance
-                      st.markdown("#### 🛠️ Plan de maintenance recommandé")
+              # Recommandations de maintenance
+              st.markdown("#### 🛠️ Plan de maintenance recommandé")
         
-                      maintenance_plan = [
-                      "**🎯 Surveillance hebdomadaire** : Calculer le score ARI chaque semaine",
-                      "**📊 Suivi du score silhouette** : Vérifier la qualité des clusters mensuellement",
-                      "**🔄 Réentraînement** : Recalculer les clusters tous les 3 mois ou après 1000 nouveaux clients",
-                      "**🚨 Alertes** : Alerter si score ARI < 0.7 ou score silhouette < 0.5",
-                      "**📈 Revue trimestrielle** : Analyser l'évolution des segments avec l'équipe marketing",
-                      "**🔧 Ajustements** : Réévaluer k si score silhouette baisse significativement"
-                    ]
+             maintenance_plan = [
+              "**🎯 Surveillance hebdomadaire** : Calculer le score ARI chaque semaine",
+              "**📊 Suivi du score silhouette** : Vérifier la qualité des clusters mensuellement",
+              "**🔄 Réentraînement** : Recalculer les clusters tous les 3 mois ou après 1000 nouveaux clients",
+              "**🚨 Alertes** : Alerter si score ARI < 0.7 ou score silhouette < 0.5",
+              "**📈 Revue trimestrielle** : Analyser l'évolution des segments avec l'équipe marketing",
+              "**🔧 Ajustements** : Réévaluer k si score silhouette baisse significativement"
+             ]
         
-                for item in maintenance_plan:
-                   st.markdown(f"- {item}")
+             for item in maintenance_plan:
+              st.markdown(f"- {item}")
         
-                  # Export des résultats
-                   st.markdown("#### 📥 Export des résultats")
+             # Export des résultats
+             st.markdown("#### 📥 Export des résultats")
         
-                   if st.button("💾 Exporter les résultats du clustering"):
-                  # Créer un DataFrame avec les résultats
-                     results_df = base.copy()
-                     results_df['cluster'] = results_df['cluster'].astype(str)
+             if st.button("💾 Exporter les résultats du clustering"):
+              # Créer un DataFrame avec les résultats
+              results_df = base.copy()
+              results_df['cluster'] = results_df['cluster'].astype(str)
             
-                     # Convertir en CSV
-                csv = results_df.to_csv(index=False)
+              # Convertir en CSV
+              csv = results_df.to_csv(index=False)
             
-                st.download_button(
-                 label="📄 Télécharger les résultats (CSV)",
-                 data=csv,
-                 file_name=f"clustering_k{n_clusters_selected}.csv",
-                 mime="text/csv"
-               )
+              st.download_button(
+                label="📄 Télécharger les résultats (CSV)",
+                data=csv,
+                file_name=f"clustering_k{n_clusters_selected}.csv",
+                mime="text/csv"
+             )
     
-        with tab4:
-          st.subheader("Résultats et Interprétation")
+     with tab4:
+        st.subheader("Résultats et Interprétation")
         
-          if 'kmeans_results' in st.session_state:
-             base_result = st.session_state.kmeans_results['base']
-             silhouette_score_val = st.session_state.kmeans_results.get('silhouette_score', 0)
-             n_clusters_used = st.session_state.kmeans_results['n_clusters']
+        if 'kmeans_results' in st.session_state:
+            base_result = st.session_state.kmeans_results['base']
+            silhouette_score_val = st.session_state.kmeans_results.get('silhouette_score', 0)
+            n_clusters_used = st.session_state.kmeans_results['n_clusters']
             
-             # Métriques
-             col1, col2, col3 = st.columns(3)
-             with col1:
-                 st.metric("Nombre de Clusters", n_clusters_used)
-             with col2:
-                 st.metric("Score Silhouette", f"{silhouette_score_val:.3f}")
-             with col3:
+            # Métriques
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Nombre de Clusters", n_clusters_used)
+            with col2:
+                st.metric("Score Silhouette", f"{silhouette_score_val:.3f}")
+            with col3:
                 st.metric("Clients Clustérisés", len(base_result))
             
-              # Statistiques
-             st.subheader("📊 Statistiques par Cluster")
-             cluster_stats = base_result.groupby('cluster').agg({
+            # Statistiques
+            st.subheader("📊 Statistiques par Cluster")
+            cluster_stats = base_result.groupby('cluster').agg({
                 'Recence': ['mean', 'std', 'min', 'max'],
                 'Frequence': ['mean', 'std', 'min', 'max'],
                 'Montant': ['mean', 'sum', 'count'],
                 'Quantite_totale': ['mean', 'sum']
-             }).round(2)
+            }).round(2)
             
-             cluster_stats.columns = ['_'.join(col).strip() for col in cluster_stats.columns.values]
-             safe_dataframe(cluster_stats)
+            cluster_stats.columns = ['_'.join(col).strip() for col in cluster_stats.columns.values]
+            st.dataframe(cluster_stats, use_container_width=True)
             
-             # Profilage
-             st.subheader("🎯 Profilage des Clusters")
+            # Profilage
+            st.subheader("🎯 Profilage des Clusters")
             
-             for cluster_num in sorted(base_result['cluster'].unique()):
+            for cluster_num in sorted(base_result['cluster'].unique()):
                 cluster_data = base_result[base_result['cluster'] == cluster_num]
                 n_clients = len(cluster_data)
                 percentage = n_clients / len(base_result) * 100
@@ -1692,10 +1659,10 @@ def modeling_and_predictions():
                 legend_title="Type de Score"
             )
             
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
             
             # Affichage des données RFM
-            safe_dataframe(rfm.head(20))
+            st.dataframe(rfm.head(20), use_container_width=True)
         
         with tab2:
             st.subheader("Segmentation des Clients")
@@ -1723,7 +1690,7 @@ def modeling_and_predictions():
                 showlegend=False
             )
             
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
             
             # Tableau des segments
             st.subheader("📋 Tableau des Segments")
@@ -1732,7 +1699,7 @@ def modeling_and_predictions():
             segments_table['% Total'] = (segments_table['Nombre de Clients'] / len(rfm) * 100).round(1)
             segments_table = segments_table.sort_values('Nombre de Clients', ascending=False)
             
-            safe_dataframe(segments_table)
+            st.dataframe(segments_table, use_container_width=True)
         
         with tab3:
             st.subheader("Analyse des Segments")
@@ -1748,7 +1715,7 @@ def modeling_and_predictions():
             segment_stats.columns = ['_'.join(col).strip() for col in segment_stats.columns.values]
             segment_stats = segment_stats.reset_index()
             
-            safe_dataframe(segment_stats)
+            st.dataframe(segment_stats, use_container_width=True)
             
             # Recommandations par segment
             st.subheader("🎯 Stratégies Marketing par Segment")
@@ -1808,7 +1775,7 @@ def modeling_and_predictions():
                     data=csv,
                     file_name="segmentation_rfm.csv",
                     mime="text/csv",
-                    width="stretch"
+                    use_container_width=True
                 )
             else:
                 output = io.BytesIO()
@@ -1819,7 +1786,7 @@ def modeling_and_predictions():
                     data=output.getvalue(),
                     file_name="segmentation_rfm.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    width="stretch"
+                    use_container_width=True
                 )
             
             # Résumé exécutif
@@ -2024,7 +1991,7 @@ def modeling_and_predictions():
                                         labels={'confidence': 'Confiance', 'lift': 'Lift', 'support': 'Support'},
                                         color_continuous_scale='Viridis')
                         
-                        st.plotly_chart(fig, width="stretch")
+                        st.plotly_chart(fig, use_container_width=True)
                     
                     else:
                         st.warning(f"⚠️ Aucune recommandation trouvée pour '{selected_item}' avec les critères spécifiés.")
@@ -2050,7 +2017,7 @@ def modeling_and_predictions():
                                title='Distribution des Confiances',
                                labels={'confidence': 'Confiance', 'count': 'Nombre de Règles'},
                                color_discrete_sequence=['#667eea'])
-            st.plotly_chart(fig1, width="stretch")
+            st.plotly_chart(fig1, use_container_width=True)
             
             # Top 10 règles par lift
             st.subheader("🏆 Top 10 des Meilleures Associations")
@@ -2061,8 +2028,8 @@ def modeling_and_predictions():
             display_rules['antecedents'] = display_rules['antecedents'].apply(lambda x: ', '.join(list(x)))
             display_rules['consequents'] = display_rules['consequents'].apply(lambda x: ', '.join(list(x)))
             
-            safe_dataframe(display_rules[['antecedents', 'consequents', 'confidence', 'lift', 'support']],
-                        )
+            st.dataframe(display_rules[['antecedents', 'consequents', 'confidence', 'lift', 'support']],
+                        use_container_width=True)
             
             # Graphique des top règles
             fig2 = px.bar(top_rules, x=top_rules.index, y='lift',
@@ -2075,7 +2042,7 @@ def modeling_and_predictions():
                                          tickvals=list(range(10)),
                                          ticktext=[f"Règle {i+1}" for i in range(10)]))
             
-            st.plotly_chart(fig2, width="stretch")
+            st.plotly_chart(fig2, use_container_width=True)
         
         with tab3:
             st.subheader("Paramètres Avancés de l'Analyse")
@@ -2232,14 +2199,14 @@ def Summary():
                 yaxis_title="Chiffre d'Affaires (€)"
             )
             
-            st.plotly_chart(fig_description_sales, width="stretch")
+            st.plotly_chart(fig_description_sales, use_container_width=True)
         
         with col_charts2:
         # Top 5 pays par CA
          sales_by_country = df_selection.groupby(by=["Country"])[["Montant"]].sum().sort_values(
          by="Montant", ascending=False).head(5)
     
-        #Utiliser une échelle de couleurs séquentielle valide
+         # CORRECTION : Utiliser une échelle de couleurs séquentielle valide
          fig_country_sales = px.bar(
          sales_by_country.reset_index(),
          x="Country",
@@ -2256,7 +2223,7 @@ def Summary():
         xaxis_tickangle=45
         )
     
-        st.plotly_chart(fig_country_sales, width="stretch")
+        st.plotly_chart(fig_country_sales, use_container_width=True)
         
         st.markdown("---")
         
@@ -2282,7 +2249,7 @@ def Summary():
             hovermode='x unified'
         )
         
-        st.plotly_chart(fig_temporal, width="stretch")
+        st.plotly_chart(fig_temporal, use_container_width=True)
         
         
         st.markdown("### 👥 Segmentation RFM des Clients")
@@ -2297,7 +2264,7 @@ def Summary():
           Recence=('InvoiceDate', lambda date: (analysis_date - date.max()).days),
           Frequence=('InvoiceNo', 'nunique'),
           Montant=('Montant', 'sum')
-        ).reset_index()
+         ).reset_index()
 
          # Quartiles pour la segmentation
         quartiles = rfm_df[['Recence', 'Frequence', 'Montant']].quantile([0.25, 0.5, 0.75]).to_dict()
@@ -2381,7 +2348,7 @@ def Summary():
         # Top 5 clients par Montant
         # -------------------------------
         st.subheader("Meilleurs Clients (Top 5 par Total des Achats)")
-        safe_dataframe(rfm_df.nlargest(5, 'Montant'))
+        st.dataframe(rfm_df.nlargest(5, 'Montant'))
 
         
         # Recommandations
@@ -2426,7 +2393,7 @@ def Summary():
                 data=csv_summary,
                 file_name="resume_ventes.csv",
                 mime="text/csv",
-                width="stretch"
+                use_container_width=True
             )
         
         with col_export2:
@@ -2437,7 +2404,7 @@ def Summary():
                 data=csv_top_clients,
                 file_name="top_clients.csv",
                 mime="text/csv",
-                width="stretch"
+                use_container_width=True
             )
     
     else:
@@ -2458,7 +2425,7 @@ def about_us():
     # Image
     try:
         image = Image.open("e-commerce.jpg")
-        st.image(image, caption="E-commerce Analytics", width="stretch")
+        st.image(image, caption="E-commerce Analytics", use_container_width=True)
     except:
         st.info("L'image 'e-commerce.jpg' n'a pas été trouvée. Assurez-vous qu'elle est dans le répertoire courant.")
     
