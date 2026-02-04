@@ -22,11 +22,25 @@ warnings.filterwarnings('ignore')
 
 def make_arrow_compatible(df):
     df = df.copy()
-    df = df.convert_dtypes()        # harmonise les types pandas
-    df = df.fillna("Unknown")       # supprime None / NaN
-    for col in df.select_dtypes(include="string").columns:
-        df[col] = df[col].astype(str)
+
+    for col in df.columns:
+        # Cas 1 : colonnes object / string
+        if df[col].dtype == "object":
+            df[col] = df[col].apply(
+                lambda x: x if isinstance(x, (int, float, str)) else str(x)
+            )
+            df[col] = df[col].fillna("Unknown").astype(str)
+
+        # Cas 2 : datetime
+        elif pd.api.types.is_datetime64_any_dtype(df[col]):
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+
+        # Cas 3 : numérique
+        elif pd.api.types.is_numeric_dtype(df[col]):
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
     return df
+
 
 
 # ===============================
@@ -315,6 +329,8 @@ def create_sidebar():
                 except Exception as e:
                     st.error(f"❌ Erreur lors de l'importation : {e}")
                     st.session_state.df = None
+
+                    pd.options.mode.dtype_backend = "numpy_nullable"
         
         st.markdown("---")
         
