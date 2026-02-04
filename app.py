@@ -21,6 +21,12 @@ import plotly.graph_objects as go
 import warnings
 warnings.filterwarnings('ignore')
 
+def safe_dataframe(df):
+    df_display = df.copy()
+    df_display.columns = df_display.columns.astype(str)
+    st.dataframe(df_display, width="stretch")
+
+
 def fix_streamlit_display(df):
     """
     Corrige les problèmes d'affichage pour Streamlit
@@ -42,8 +48,6 @@ def fix_streamlit_display(df):
     if 'Type' in df_fixed.columns:
         df_fixed['Type'] = df_fixed['Type'].astype(str)
     
-    # 4. Remplacer NaN par None (meilleur pour Streamlit)
-    df_fixed = df_fixed.replace({np.nan: None, pd.NaT: None})
     
     return df_fixed
 
@@ -381,7 +385,7 @@ def create_sidebar():
         """, unsafe_allow_html=True)
 
 # ===============================
-# DESCRIPTION DES DONNÉES (AMÉLIORÉE)
+# DESCRIPTION DES DONNÉES 
 # ===============================
 def description_data():
     st.markdown("""
@@ -401,7 +405,7 @@ def description_data():
             st.subheader("Aperçu des Données")
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.dataframe(df.head(20), width="stretch")
+                safe_dataframe(df.head(20))
             with col2:
                 st.metric("Lignes", f"{df.shape[0]:,}")
                 st.metric("Colonnes", df.shape[1])
@@ -411,44 +415,37 @@ def description_data():
             with st.expander("📋 Informations sur les colonnes"):
                 col_info = pd.DataFrame({
                     'Colonne': df.columns,
-                    'Type': df.dtypes.values,
+                    'Type': df.dtypes.astype(str).values,
                     'Valeurs Uniques': [df[col].nunique() for col in df.columns],
                     'Valeurs Null': df.isnull().sum().values
                 })
-                st.dataframe(col_info, width="stretch")
+                safe_dataframe(col_info)
         
         with tab2:
             st.subheader("Statistiques Descriptives")
             
             # Sélection des colonnes numériques
-            num_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-            if 'Montant' in df.columns:
-                num_cols = ['Quantity', 'UnitPrice', 'Montant']
+            num_cols = [col for col in ['Quantity', 'UnitPrice', 'Montant'] if col in df.columns]
+
             
             if num_cols:
-                # Statistiques détaillées
+                 # Statistiques détaillées
                 stats_df = df[num_cols].describe().T
                 stats_df['skew'] = df[num_cols].skew()
                 stats_df['kurtosis'] = df[num_cols].kurtosis()
-                
-                # Affichage avec mise en forme
-                st.dataframe(stats_df.style.format({
-                    'mean': '{:.2f}',
-                    'std': '{:.2f}',
-                    'min': '{:.2f}',
-                    '25%': '{:.2f}',
-                    '50%': '{:.2f}',
-                    '75%': '{:.2f}',
-                    'max': '{:.2f}',
-                    'skew': '{:.2f}',
-                    'kurtosis': '{:.2f}'
-                }), width="stretch")
+
+                  # Arrondir pour l'affichage
+                stats_df = stats_df.round(2)
+
+                  # Affichage sécurisé
+                safe_dataframe(stats_df)
                 
                 # Distribution des variables numériques
                 st.subheader("📈 Distributions")
                 selected_col = st.selectbox("Sélectionnez une variable", num_cols)
                 if selected_col:
-                    fig = px.histogram(df, x=selected_col, nbins=50, 
+                    df_plot = df[[selected_col]].dropna()
+                    fig = px.histogram(df_plot, x=selected_col, nbins=50, 
                                       title=f"Distribution de {selected_col}",
                                       color_discrete_sequence=['#667eea'])
                     st.plotly_chart(fig, width="stretch")
@@ -528,7 +525,7 @@ def description_data():
         st.warning("Veuillez d'abord importer un fichier de données.")
 
 # ===============================
-# VISUALISATION AMÉLIORÉE - CORRIGÉE
+# VISUALISATION AMÉLIORÉE 
 # ===============================
 def visualize_data():
     st.markdown("""
@@ -929,14 +926,14 @@ def modeling_and_predictions():
     
     # K-MEANS 
     def kmeans_clustering(df_invoice, analysis_date):
-     st.markdown("""
-     <div style='background: #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
+      st.markdown("""
+      <div style='background: #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
          <h3 style='color: #1E3A8A; margin: 0;'>👥 Segmentation Client avec K-means</h3>
          <p style='margin: 5px 0 0 0;'>Regroupement des clients en clusters basé sur leur comportement d'achat.</p>
-     </div>
+      </div>
      """, unsafe_allow_html=True)
      
-     with st.expander("ℹ️ Explication du modèle", expanded=False):
+      with st.expander("ℹ️ Explication du modèle", expanded=False):
         st.markdown("""
         **K-means** est un algorithme de clustering non supervisé qui partitionne les données en K clusters.
         
@@ -947,63 +944,66 @@ def modeling_and_predictions():
         - **⚖️ Score ARI** : Évalue la stabilité des clusters
         """)
     
-     # Préparation des données 
-     base = df_invoice.groupby('CustomerID').agg({
+      # Préparation des données 
+      base = df_invoice.groupby('CustomerID').agg({
         'InvoiceDate': lambda x: (analysis_date - x.max()).days,
         'InvoiceNo': 'nunique',
         'Quantity': 'sum',
         'Montant': 'sum'
-    }).rename(columns={
+     }).rename(columns={
         'InvoiceDate': 'Recence',
         'InvoiceNo': 'Frequence',
         'Quantity': 'Quantite_totale',
         'Montant': 'Montant'
-    }).reset_index()
+     }).reset_index()
      
     
-     # Afficher quelques statistiques pour vérifier
-     with st.expander("📊 Vérification des données RFM"):
+      # Afficher quelques statistiques pour vérifier
+      with st.expander("📊 Vérification des données RFM"):
         st.write(f"Nombre de clients: {len(base)}")
         st.write(f"Moyenne Récence: {base['Recence'].mean():.1f} jours")
         st.write(f"Moyenne Fréquence: {base['Frequence'].mean():.1f}")
         st.write(f"Moyenne Montant: €{base['Montant'].mean():.2f}")
-        st.dataframe(base[['Recence', 'Frequence', 'Quantite_totale', 'Montant']].describe())
+        safe_dataframe(
+          base[['Recence', 'Frequence', 'Quantite_totale', 'Montant']].describe()
+       )
+
     
-     # Normalisation
-     scaler = StandardScaler()
-     base_scaled = scaler.fit_transform(base[['Recence', 'Frequence', 'Quantite_totale', 'Montant']])
+      # Normalisation
+      scaler = StandardScaler()
+      base_scaled = scaler.fit_transform(base[['Recence', 'Frequence', 'Quantite_totale', 'Montant']])
     
-     # Stocker dans session state pour accès global
-     st.session_state.kmeans_data = {
+      # Stocker dans session state pour accès global
+      st.session_state.kmeans_data = {
         'base': base,
         'base_scaled': base_scaled,
         'scaler': scaler
-     }
-     # Vérifier la normalisation
-     st.success(f"✅ Données préparées: {len(base)} clients, 4 variables normalisées")
+      }
+      # Vérifier la normalisation
+      st.success(f"✅ Données préparées: {len(base)} clients, 4 variables normalisées")
     
-     KMEANS_PARAMS = {
+      KMEANS_PARAMS = {
         'init': 'k-means++',
         'max_iter': 300,
         'n_init': 10,
         'random_state': 42,
         'algorithm':'lloyd'
         
-    }
+      }
      
-     st.sidebar.info(f"🔧 Paramètres KMeans: {KMEANS_PARAMS}")
+      st.sidebar.info(f"🔧 Paramètres KMeans: {KMEANS_PARAMS}")
 
-     # Onglets pour l'analyse K-means
-     tab1, tab2, tab3, tab4 = st.tabs(["📉 Méthode du Coude", "📊 Score Silhouette", "👥 Clustering", "📋 Résultats"])
+      # Onglets pour l'analyse K-means
+      tab1, tab2, tab3, tab4 = st.tabs(["📉 Méthode du Coude", "📊 Score Silhouette", "👥 Clustering", "📋 Résultats"])
     
-     with tab1:
-      st.subheader("Méthode du Coude pour Déterminer k Optimal")
+      with tab1:
+       st.subheader("Méthode du Coude pour Déterminer k Optimal")
 
-      inertia = []
-      k_max = 15
+       inertia = []
+       k_max = 15
 
-      progress_bar = st.progress(0)
-      status_text = st.empty()
+       progress_bar = st.progress(0)
+       status_text = st.empty()
 
       with st.spinner("Calcul de l'inertie pour différents k..."):
         for k in range(1, k_max + 1):
@@ -1079,18 +1079,10 @@ def modeling_and_predictions():
             return ["background-color: #fff3cd"] * len(row)
          return [""] * len(row)
 
-        st.dataframe(
-         inertia_df.style
-         .format({
-            "Inertie": "{:.0f}",
-            "Δ Inertie": "{:.1f}",
-            "% Δ": "{:.1f}%"
-         }).apply(highlight_zone, axis=1),
-         width="stretch"
-        )
+        safe_dataframe(inertia_df.round(2))
      
 
-     with tab2:
+      with tab2:
         st.subheader("Score de silhouette pour validation")
         
         st.info("📊 Calcul des scores de silhouette en cours...")
@@ -1281,7 +1273,7 @@ def modeling_and_predictions():
         st.success(f"✅ **k optimal déterminé : {final_k}** (stocké pour les étapes suivantes)")
     
     
-     with tab3:
+      with tab3:
         st.subheader("Application du Clustering K-means")
         
         
@@ -1496,7 +1488,7 @@ def modeling_and_predictions():
                 mime="text/csv"
              )
     
-     with tab4:
+      with tab4:
         st.subheader("Résultats et Interprétation")
         
         if 'kmeans_results' in st.session_state:
