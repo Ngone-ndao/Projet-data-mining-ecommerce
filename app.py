@@ -27,29 +27,6 @@ def safe_dataframe(df):
     st.dataframe(df_display, width="stretch")
 
 
-def fix_streamlit_display(df):
-    """
-    Corrige les problèmes d'affichage pour Streamlit
-    """
-    if df is None:
-        return df
-    
-    df_fixed = df.copy()
-    
-    # 1. Convertir toutes les colonnes 'object' en string
-    for col in df_fixed.select_dtypes(include=['object']).columns:
-        df_fixed[col] = df_fixed[col].astype(str)
-    
-    # 2. Spécialement pour StockCode (même si numérique)
-    if 'StockCode' in df_fixed.columns:
-        df_fixed['StockCode'] = df_fixed['StockCode'].astype(str)
-    
-    # 3. Spécialement pour Type
-    if 'Type' in df_fixed.columns:
-        df_fixed['Type'] = df_fixed['Type'].astype(str)
-    
-    
-    return df_fixed
 
 # ===============================
 # CONFIGURATION INITIALE ET STYLES
@@ -331,6 +308,14 @@ def create_sidebar():
                         # Convertir Type en string si la colonne existe
                         if 'Type' in df_temp.columns:
                           df_temp['Type'] = df_temp['Type'].astype(str)
+
+                          # 3. Convertir TOUTES les colonnes 'object' en string
+                        for col in df_temp.select_dtypes(include=['object']).columns:
+                          df_temp[col] = df_temp[col].astype(str)
+
+                          # 4. Remplacer NaN par None
+                        df_temp = df_temp.replace({np.nan: None})
+
                         # Calculate 'Montant' and store in session state
                         df_temp['Montant'] = df_temp['Quantity'] * df_temp['UnitPrice']
                         st.session_state.df = df_temp
@@ -1375,20 +1360,18 @@ def modeling_and_predictions():
                  ari_scores = []
 
                  for _ in range(n_init):
-                  # Initialisation et exécution de K-means
-                  kmeans = KMeans(n_clusters=n_clusters_used)
-                  labels = kmeans.fit_predict(base_scaled)
-                  # Calcul de l'indice ARI
-                  ari_scores.append(labels)
+                   kmeans = KMeans(n_clusters=n_clusters_used, random_state=None)
+                   labels = kmeans.fit_predict(base_scaled)
+                   ari_scores.append(labels)
 
-                 # Calcul de la matrice de similarité
-                 similarity_matrix = np.zeros((n_init, n_init))
-                 for i in range(n_init):
-                  for j in range(n_init):
-                    similarity_matrix[i, j] = adjusted_rand_score(ari_scores[i], ari_scores[j])
+                   similarities = []
+                   for i in range(len(ari_scores)-1):
+                    similarities.append(
+                    adjusted_rand_score(ari_scores[i], ari_scores[i+1])
+                )
 
-                 # Calcul de la stabilité moyenne
-                 stability = np.mean(similarity_matrix)
+                 stability = np.mean(similarities)
+
             
                  st.write(f"**Stabilité de K-means :** {stability:.3f}")
                  if stability > 0.8:
@@ -1402,7 +1385,7 @@ def modeling_and_predictions():
             
                  # Graphique de la stabilité
                  fig_stab, ax_stab = plt.subplots(figsize=(10, 4))
-                 ax_stab.plot(range(1, n_init + 1), np.diag(similarity_matrix), 'o-', color='#667eea')
+                 ax_stab.plot(range(1, n_init + 1), np.diag(similarities), 'o-', color='#667eea')
                  ax_stab.set_xlabel('Initialisation')
                  ax_stab.set_ylabel('Score ARI')
                  ax_stab.set_title(f'Stabilité pour k={n_clusters_used}')
@@ -1515,7 +1498,7 @@ def modeling_and_predictions():
             }).round(2)
             
             cluster_stats.columns = ['_'.join(col).strip() for col in cluster_stats.columns.values]
-            st.dataframe(cluster_stats, width="stretch")
+            safe_dataframe(cluster_stats)
             
             # Profilage
             st.subheader("🎯 Profilage des Clusters")
@@ -1688,7 +1671,7 @@ def modeling_and_predictions():
             st.plotly_chart(fig, width="stretch")
             
             # Affichage des données RFM
-            st.dataframe(rfm.head(20), width="stretch")
+            safe_dataframe(rfm.head(20))
         
         with tab2:
             st.subheader("Segmentation des Clients")
@@ -1725,7 +1708,7 @@ def modeling_and_predictions():
             segments_table['% Total'] = (segments_table['Nombre de Clients'] / len(rfm) * 100).round(1)
             segments_table = segments_table.sort_values('Nombre de Clients', ascending=False)
             
-            st.dataframe(segments_table, width="stretch")
+            safe_dataframe(segments_table)
         
         with tab3:
             st.subheader("Analyse des Segments")
@@ -1741,7 +1724,7 @@ def modeling_and_predictions():
             segment_stats.columns = ['_'.join(col).strip() for col in segment_stats.columns.values]
             segment_stats = segment_stats.reset_index()
             
-            st.dataframe(segment_stats, width="stretch")
+            safe_dataframe(segment_stats)
             
             # Recommandations par segment
             st.subheader("🎯 Stratégies Marketing par Segment")
@@ -2054,8 +2037,8 @@ def modeling_and_predictions():
             display_rules['antecedents'] = display_rules['antecedents'].apply(lambda x: ', '.join(list(x)))
             display_rules['consequents'] = display_rules['consequents'].apply(lambda x: ', '.join(list(x)))
             
-            st.dataframe(display_rules[['antecedents', 'consequents', 'confidence', 'lift', 'support']],
-                        width="stretch")
+            safe_dataframe(display_rules[['antecedents', 'consequents', 'confidence', 'lift', 'support']],
+                        )
             
             # Graphique des top règles
             fig2 = px.bar(top_rules, x=top_rules.index, y='lift',
@@ -2374,7 +2357,7 @@ def Summary():
         # Top 5 clients par Montant
         # -------------------------------
         st.subheader("Meilleurs Clients (Top 5 par Total des Achats)")
-        st.dataframe(rfm_df.nlargest(5, 'Montant'))
+        safe_dataframe(rfm_df.nlargest(5, 'Montant'))
 
         
         # Recommandations
