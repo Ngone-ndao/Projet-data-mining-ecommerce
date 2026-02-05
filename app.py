@@ -314,10 +314,10 @@ def create_sidebar():
                 try:
                     # Traitement selon le type de fichier
                     if uploaded_file.name.endswith('.xlsx'):
-                        df_temp = pd.read_excel(uploaded_file)
+                        df_temp = pd.read_excel(uploaded_file, engine="openpyxl")
                         df_temp['Montant'] = df_temp['Quantity'] * df_temp['UnitPrice']
 
-                         # 🔥 CORRECTION GLOBALE ICI (UNE SEULE FOIS)
+                         
                         df_temp = make_arrow_compatible(df_temp)
 
                         st.session_state.df = df_temp
@@ -330,7 +330,7 @@ def create_sidebar():
                     st.error(f"❌ Erreur lors de l'importation : {e}")
                     st.session_state.df = None
 
-                    pd.options.mode.dtype_backend = "numpy_nullable"
+                    
         
         st.markdown("---")
         
@@ -374,7 +374,7 @@ def create_sidebar():
         """, unsafe_allow_html=True)
 
 # ===============================
-# DESCRIPTION DES DONNÉES (AMÉLIORÉE)
+# DESCRIPTION DES DONNÉES 
 # ===============================
 def description_data():
     st.markdown("""
@@ -385,7 +385,8 @@ def description_data():
     </div>
     """, unsafe_allow_html=True)
     
-    df = st.session_state.df
+    df = st.session_state.get("df", None)
+
     if df is not None:
         # Onglets pour organiser le contenu
         tab1, tab2, tab3, tab4 = st.tabs(["👀 Aperçu", "📊 Statistiques", "🔍 Valeurs Manquantes", "💾 Export"])
@@ -414,9 +415,11 @@ def description_data():
             st.subheader("Statistiques Descriptives")
             
             # Sélection des colonnes numériques
-            num_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            num_cols = df.select_dtypes(include='number').columns.tolist()
+
             if 'Montant' in df.columns:
-                num_cols = ['Quantity', 'UnitPrice', 'Montant']
+                num_cols = [col for col in ['Quantity', 'UnitPrice', 'Montant'] if col in df.columns]
+
             
             if num_cols:
                 # Statistiques détaillées
@@ -521,7 +524,7 @@ def description_data():
         st.warning("Veuillez d'abord importer un fichier de données.")
 
 # ===============================
-# VISUALISATION AMÉLIORÉE - CORRIGÉE
+# VISUALISATION 
 # ===============================
 def visualize_data():
     st.markdown("""
@@ -559,15 +562,19 @@ def visualize_data():
             st.subheader("📅 Évolution du Chiffre d'Affaires")
             
             # Préparation des données temporelles
-            df['InvoiceDate'] = pd.to_datetime(df['InvoiceDate'])
-            df['Date'] = df['InvoiceDate'].dt.date
-            df['Mois'] = df['InvoiceDate'].dt.to_period('M').astype(str)
+            df_vis = df.copy()
+
+            df_vis['InvoiceDate'] = pd.to_datetime(df_vis['InvoiceDate'], errors="coerce")
+            df_vis['Date'] = df_vis['InvoiceDate'].dt.date
+            df_vis['Mois'] = df_vis['InvoiceDate'].dt.to_period('M').astype(str)
+
             
             # Sélection de la période
             period = st.radio("Période d'analyse", ["Journalier", "Hebdomadaire", "Mensuel"], horizontal=True)
             
             if period == "Journalier":
-                time_data = df.groupby('Date')['Montant'].sum().reset_index()
+                time_data = df_vis.groupby('Date')['Montant'].sum().reset_index()
+
                 title = "Évolution Journalière du Chiffre d'Affaires"
                 x_col = 'Date'
             elif period == "Hebdomadaire":
@@ -845,30 +852,44 @@ def visualize_data():
             st.plotly_chart(fig3, width="stretch")
 
 
-             # Extraction du jour de la semaine
-             # Ensure 'InvoiceDate' is datetime before operations
-            df['InvoiceDate'] = pd.to_datetime(df['InvoiceDate'])
-            df['Num_Jour'] = df['InvoiceDate'].dt.dayofweek
+             # =========================
+             # Nombre de transactions par jour
+             # =========================
 
-             # Groupement et comptage
-            order_day = df.groupby('Num_Jour')['InvoiceNo'].nunique()
+            df_vis = df.copy()
 
-             # Création du graphique avec matplotlib/seaborn
+            # S'assurer que la date est bien en datetime
+            df_vis['InvoiceDate'] = pd.to_datetime(df_vis['InvoiceDate'], errors='coerce')
+
+            # Extraction du jour de la semaine (0 = Lundi)
+            df_vis['Num_Jour'] = df_vis['InvoiceDate'].dt.dayofweek
+
+            # Groupement et comptage
+            order_day = (
+              df_vis
+              .groupby('Num_Jour')['InvoiceNo']
+              .nunique()
+              .reset_index()
+            )
+
+              # Graphique Plotly
             st.subheader("📊 Nombre de Transactions par Jour de la Semaine")
-             # Initialisation de la figure
-            fig4, ax = plt.subplots(figsize=(12, 8))
 
-            # Tracé du graphique
-            sns.barplot(x=order_day.index, y=order_day.values, palette="Set3", ax=ax)
-            ax.set_title('Nombre de Transactions par Jour', size=20)
-            ax.set_xlabel('Jour', size=14)
-            ax.set_ylabel('Nombre de Transactions', size=14)
-            ax.xaxis.set_tick_params(labelsize=11)
-            ax.yaxis.set_tick_params(labelsize=11)
-            ax.set_xticklabels(['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'])
+            fig4 = px.bar(
+               order_day,
+               x='Num_Jour',
+               y='InvoiceNo',
+               title="📊 Nombre de Transactions par Jour de la Semaine",
+               labels={'Num_Jour': 'Jour', 'InvoiceNo': 'Transactions'}
+            )
 
-             # Affichage dans Streamlit
-            st.pyplot(fig4)
+            fig4.update_xaxes(
+               tickvals=[0,1,2,3,4,5,6],
+               ticktext=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
+            )
+
+            st.plotly_chart(fig4, width="stretch")
+
 
 
              # S'assurer que 'InvoiceDate' est bien au format datetime
@@ -894,10 +915,18 @@ def modeling_and_predictions():
     </div>
     """, unsafe_allow_html=True)
     
-    df = st.session_state.df
-    if df is None:
+    df_base = st.session_state.get("df", None)
+    if df_base is None:
         st.warning("Veuillez d'abord importer un fichier de données pour la modélisation.")
         return
+    df = df_base.copy()
+
+    # Sécurisation des types
+    df['InvoiceDate'] = pd.to_datetime(df['InvoiceDate'], errors='coerce')
+    df['CustomerID'] = df['CustomerID'].astype(str)
+    df['InvoiceNo'] = df['InvoiceNo'].astype(str)
+    df['Quantity'] = pd.to_numeric(df['Quantity'], errors='coerce')
+    df['Montant'] = pd.to_numeric(df['Montant'], errors='coerce')
     
     # Menu de sélection du modèle
     menu1 = ["👥 K-means", "⭐ Segmentation RFM", "🛒 FP_GROWTH"] 
@@ -912,6 +941,7 @@ def modeling_and_predictions():
 
     # Date d'analyse
     analysis_date = df_invoice['InvoiceDate'].max() + timedelta(days=1)
+    
     
     # Section d'information
     with st.expander("📊 Informations sur les données de modélisation", expanded=False):
@@ -940,18 +970,20 @@ def modeling_and_predictions():
         - **⚖️ Score ARI** : Évalue la stabilité des clusters
         """)
     
+     df_rfm = df_invoice.copy()
+     df_rfm['Recence'] = (analysis_date - df_rfm['InvoiceDate']).dt.days
+
      # Préparation des données 
-     base = df_invoice.groupby('CustomerID').agg({
-        'InvoiceDate': lambda x: (analysis_date - x.max()).days,
-        'InvoiceNo': 'nunique',
-        'Quantity': 'sum',
-        'Montant': 'sum'
+     base = df_rfm.groupby('CustomerID').agg({
+      'Recence': 'min',
+      'InvoiceNo': 'nunique',
+      'Quantity': 'sum',
+      'Montant': 'sum'
     }).rename(columns={
-        'InvoiceDate': 'Recence',
-        'InvoiceNo': 'Frequence',
-        'Quantity': 'Quantite_totale',
-        'Montant': 'Montant'
+      'InvoiceNo': 'Frequence',
+      'Quantity': 'Quantite_totale'
     }).reset_index()
+
      
     
      # Afficher quelques statistiques pour vérifier
@@ -1329,13 +1361,11 @@ def modeling_and_predictions():
                 
                 # Sauvegarde
                 st.session_state.kmeans_results = {
-                    'base': base,
-                    'labels': labels,
-                    'model': model_kmeans,
-                    'n_clusters': n_clusters_selected,
-                    'silhouette_score': silhouette_avg,
-                    'centers': model_kmeans.cluster_centers_
+                 'base': base.copy(),
+                 'n_clusters': n_clusters_selected,
+                 'silhouette_score': silhouette_avg
                 }
+
                 
                 st.success(f"✅ Clustering terminé ! {n_clusters_selected} clusters créés.")
                 st.info(f"📊 Score Silhouette final : {silhouette_avg:.3f}")
@@ -1368,99 +1398,94 @@ def modeling_and_predictions():
 
             # Analyse de stabilité simplifiée
             st.subheader("📈 Analyse de Stabilité")
-            
+
             if st.button("Analyser la stabilité", type="secondary", key="analyze_stability"):
-             with st.spinner("Analyse de stabilité en cours..."):
-               try:
-                 # Exécuter K-means plusieurs fois avec différentes initialisations
-                 n_init = 10
-                 ari_scores = []
+              with st.spinner("Analyse de stabilité en cours..."):
+                try:
+                   # Exécuter K-means plusieurs fois avec différentes initialisations
+                  n_init = 10
+                  labels_list = []
 
-                 for _ in range(n_init):
-                  # Initialisation et exécution de K-means
-                  kmeans = KMeans(n_clusters=n_clusters_used)
-                  labels = kmeans.fit_predict(base_scaled)
-                  # Calcul de l'indice ARI
-                  ari_scores.append(labels)
+                  for _ in range(n_init):
+                     kmeans = KMeans(n_clusters=n_clusters_used, n_init=1, random_state=None)
+                     labels = kmeans.fit_predict(base_scaled)
+                     labels_list.append(labels)
 
-                 # Calcul de la matrice de similarité
-                 similarity_matrix = np.zeros((n_init, n_init))
-                 for i in range(n_init):
-                  for j in range(n_init):
-                    similarity_matrix[i, j] = adjusted_rand_score(ari_scores[i], ari_scores[j])
+                      # Calcul de la matrice de similarité ARI
+                  ari_matrix = np.zeros((n_init, n_init))
+                  for i in range(n_init):
+                     for j in range(n_init):
+                       ari_matrix[i, j] = adjusted_rand_score(labels_list[i], labels_list[j])
 
-                 # Calcul de la stabilité moyenne
-                 stability = np.mean(similarity_matrix)
-            
-                 st.write(f"**Stabilité de K-means :** {stability:.3f}")
-                 if stability > 0.8:
-                  st.success("✅ Excellente stabilité")
-                 elif stability > 0.6:
-                  st.info("📊 Bonne stabilité")
-                 elif stability > 0.4:
-                  st.warning("⚠️ Stabilité modérée")
-                 else:
-                  st.error("❌ Faible stabilité")
-            
-                 # Graphique de la stabilité
-                 fig_stab, ax_stab = plt.subplots(figsize=(10, 4))
-                 ax_stab.plot(range(1, n_init + 1), np.diag(similarity_matrix), 'o-', color='#667eea')
-                 ax_stab.set_xlabel('Initialisation')
-                 ax_stab.set_ylabel('Score ARI')
-                 ax_stab.set_title(f'Stabilité pour k={n_clusters_used}')
-                 ax_stab.grid(alpha=0.3)
-                 st.pyplot(fig_stab)
-            
-               except Exception as e:
-                st.error(f"Erreur lors de l'analyse de stabilité : {str(e)}")
+                    # Stabilité moyenne
+                  stability = np.mean(ari_matrix)
+                  st.write(f"**Stabilité de K-means :** {stability:.3f}")
 
-             # Contrat de maintenance
-             st.subheader("Contrat de maintenance")
-             try:
-               ARI_score = pd.read_csv("ARI_kmeans.csv")
-               st.write("Score ARI pour chaque semaine :")
-               st.dataframe(ARI_score)
-               ARI_scores = ARI_score['ARI'].tolist()
+                  # Interprétation
+                  if stability > 0.8:
+                    st.success("✅ Excellente stabilité")
+                  elif stability > 0.6:
+                    st.info("📊 Bonne stabilité")
+                  elif stability > 0.4:
+                    st.warning("⚠️ Stabilité modérée")
+                  else:
+                    st.error("❌ Faible stabilité")
 
-               # Paramètres de style
-               sns.set(rc={'figure.figsize': (10, 6)})
+                  # Graphique de la stabilité
+                  fig_stab, ax_stab = plt.subplots(figsize=(10, 4))
+                  ax_stab.plot(range(1, n_init + 1), np.diag(ari_matrix), 'o-', color='#667eea')
+                  ax_stab.set_xlabel('Initialisation')
+                  ax_stab.set_ylabel('Score ARI')
+                  ax_stab.set_title(f'Stabilité pour k={n_clusters_used}')
+                  ax_stab.grid(alpha=0.3)
+                  st.pyplot(fig_stab)
 
-               # Création de la figure
-               fig, ax = plt.subplots()
+                except Exception as e:
+                  st.error(f"Erreur lors de l'analyse de stabilité : {str(e)}")
 
-               # Tracé de la courbe
-               sns.lineplot(x=range(1, len(ARI_scores) + 1), y=ARI_scores, ax=ax)
-               ax.axvline(6, c='red', ls='--')
 
-               # Personnalisation
-               ax.set_title('Évolution du score ARI')
-               ax.set_xlabel('Semaines')
-               ax.set_ylabel('Score ARI')
-               ax.set_xticks(range(1, len(ARI_scores) + 1))
-               # Affichage dans Streamlit
-               st.pyplot(fig)
-    
-             except FileNotFoundError:
-              st.warning("⚠️ Fichier ARI_kmeans.csv non trouvé. Affichage d'un exemple.")
-    
-              # Créer des données d'exemple
-              example_scores = [0.95, 0.93, 0.92, 0.91, 0.90, 0.89, 0.88, 0.87, 0.86, 0.85, 0.84, 0.83]
-    
-              fig, ax = plt.subplots(figsize=(10, 6))
-              ax.plot(range(1, len(example_scores) + 1), example_scores, 'o-', color='#667eea')
-              ax.axvline(6, c='red', ls='--', label='Maintenance prévue')
-              ax.set_title('Exemple: Évolution du score ARI')
-              ax.set_xlabel('Semaines')
-              ax.set_ylabel('Score ARI')
-              ax.set_xticks(range(1, len(example_scores) + 1))
-              ax.grid(alpha=0.3)
-              ax.legend()
-              st.pyplot(fig)
+                 # Contrat de maintenance
+                st.subheader("Contrat de maintenance")
+
+                try:
+                  # Lecture du fichier CSV ARI
+                  ARI_score = pd.read_csv("ARI_kmeans.csv")
+                  st.write("Score ARI pour chaque semaine :")
+                  st.dataframe(ARI_score)
+                  ARI_scores = ARI_score['ARI'].tolist()
+
+                except FileNotFoundError:
+                 st.warning("⚠️ Fichier ARI_kmeans.csv non trouvé. Affichage d'un exemple.")
+                 # Créer des données d'exemple
+                 ARI_scores = [0.95, 0.93, 0.92, 0.91, 0.90, 0.89, 0.88, 0.87, 0.86, 0.85, 0.84, 0.83]
+
+                # Paramètres de style
+                sns.set(rc={'figure.figsize': (10, 6)})
+
+                # Création de la figure
+                fig, ax = plt.subplots(figsize=(10, 6))
+
+                # Tracé de la courbe
+                ax.plot(range(1, len(ARI_scores) + 1), ARI_scores, 'o-', linewidth=2, color='#667eea')
+
+                # Ligne de maintenance prévue (exemple ou CSV)
+                ax.axvline(6, c='red', ls='--', label='Maintenance prévue')
+
+                # Personnalisation
+                ax.set_title('Évolution du score ARI')
+                ax.set_xlabel('Semaines')
+                ax.set_ylabel('Score ARI')
+                ax.set_xticks(range(1, len(ARI_scores) + 1))
+                ax.grid(alpha=0.3)
+                ax.legend()
+
+                 # Affichage dans Streamlit
+                st.pyplot(fig)
 
               # Recommandations de maintenance
               st.markdown("#### 🛠️ Plan de maintenance recommandé")
         
-             maintenance_plan = [
+            maintenance_plan = [
               "**🎯 Surveillance hebdomadaire** : Calculer le score ARI chaque semaine",
               "**📊 Suivi du score silhouette** : Vérifier la qualité des clusters mensuellement",
               "**🔄 Réentraînement** : Recalculer les clusters tous les 3 mois ou après 1000 nouveaux clients",
@@ -1469,13 +1494,13 @@ def modeling_and_predictions():
               "**🔧 Ajustements** : Réévaluer k si score silhouette baisse significativement"
              ]
         
-             for item in maintenance_plan:
+            for item in maintenance_plan:
               st.markdown(f"- {item}")
         
              # Export des résultats
-             st.markdown("#### 📥 Export des résultats")
+            st.markdown("#### 📥 Export des résultats")
         
-             if st.button("💾 Exporter les résultats du clustering"):
+            if st.button("💾 Exporter les résultats du clustering"):
               # Créer un DataFrame avec les résultats
               results_df = base.copy()
               results_df['cluster'] = results_df['cluster'].astype(str)
@@ -1586,7 +1611,9 @@ def modeling_and_predictions():
         - Personnaliser les communications
         - Optimiser la rétention
         """)
-        
+        df_for_rfm['InvoiceDate'] = pd.to_datetime(df_for_rfm['InvoiceDate'])
+        analysis_date = df_for_rfm['InvoiceDate'].max() + pd.Timedelta(days=1)
+
         # Calcul RFM
         rfm = df_for_rfm.groupby('CustomerID').agg({
             'InvoiceDate': lambda x: (analysis_date - x.max()).days,
@@ -1820,24 +1847,27 @@ def modeling_and_predictions():
             # Résumé exécutif
             st.subheader("📋 Résumé Exécutif")
             
-            top_segment = segments_counts.index[0]
-            top_count = segments_counts.iloc[0]
-            top_percentage = (top_count / len(rfm)) * 100
+            if not segments_counts.empty:
+              top_segment = segments_counts.index[0]
+              top_count = segments_counts.iloc[0]
+              top_percentage = (top_count / len(rfm)) * 100
+
+              st.markdown(f"""
+              **Insights Clés :**
             
-            st.markdown(f"""
-            **Insights Clés :**
+              - **Segment majoritaire :** {top_segment} ({top_percentage:.1f}% des clients)
+              - **Clients à haute valeur :** {len(rfm[rfm['M_Score'] == 4])} clients (score M=4)
+              - **Clients récents :** {len(rfm[rfm['R_Score'] == 4])} clients (score R=4)
+              - **Clients fréquents :** {len(rfm[rfm['F_Score'] == 4])} clients (score F=4)
+              - **Clients champions :** {len(rfm[rfm['RFM_score'] == '444'])} clients (score RFM=444)
             
-            - **Segment majoritaire :** {top_segment} ({top_percentage:.1f}% des clients)
-            - **Clients à haute valeur :** {len(rfm[rfm['M_Score'] == 4])} clients (score M=4)
-            - **Clients récents :** {len(rfm[rfm['R_Score'] == 4])} clients (score R=4)
-            - **Clients fréquents :** {len(rfm[rfm['F_Score'] == 4])} clients (score F=4)
-            - **Clients champions :** {len(rfm[rfm['RFM_score'] == '444'])} clients (score RFM=444)
-            
-            **Recommandations Globales :**
-            1. Focus sur la rétention des {len(rfm[rfm['Segment'].isin(['Très bons clients', 'Clients loyaux'])])} clients loyaux
-            2. Campagnes de réactivation pour les {len(rfm[rfm['Segment'] == 'Clients à risque'])} clients à risque
-            3. Programmes d'onboarding pour les {len(rfm[rfm['Segment'] == 'Nouveaux clients'])} nouveaux clients
-            """)
+              **Recommandations Globales :**
+              1. Focus sur la rétention des {len(rfm[rfm['Segment'].isin(['Très bons clients', 'Clients loyaux'])])} clients loyaux
+              2. Campagnes de réactivation pour les {len(rfm[rfm['Segment'] == 'Clients à risque'])} clients à risque
+              3. Programmes d'onboarding pour les {len(rfm[rfm['Segment'] == 'Nouveaux clients'])} nouveaux clients
+              """)
+            else:
+              st.warning("⚠️ Aucun segment trouvé. Vérifiez vos données RFM.")
     
     # FP-GROWTH 
     def fp_growth_func(df_for_fp_growth):
