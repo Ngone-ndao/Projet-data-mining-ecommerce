@@ -1469,7 +1469,7 @@ def modeling_and_predictions():
                 ax.plot(range(1, len(ARI_scores) + 1), ARI_scores, 'o-', linewidth=2, color='#667eea')
 
                 # Ligne de maintenance prévue (exemple ou CSV)
-                ax.axvline(6, c='red', ls='--', label='Maintenance prévue')
+                ax.axvline(8, c='red', ls='--', label='Maintenance prévue')
 
                 # Personnalisation
                 ax.set_title('Évolution du score ARI')
@@ -2525,7 +2525,7 @@ def about_us():
             <h3 style='color: #1E3A8A;'>Dib NDIAYE</h3>
             <h3 style='color: #1E3A8A;'>Mareme DIONE</h3>
             <h3 style='color: #1E3A8A;'>Mouhammad SONKO</h3>
-            <h3 style='color: #1E3A8A;'>Djimith NDAIAYE</h3>
+            <h3 style='color: #1E3A8A;'>Djimith NDIAYE</h3>
             <h3 style='color: #1E3A8A;'>Ababacar MBENGUE</h3>
             <p style='color: #666;'>Data Scientist & Analyste</p>
             <div style='margin: 15px 0;'>
@@ -2574,7 +2574,6 @@ def about_us():
         <div style='text-align: center;'>
             <h4>👤 Nom</h4>
             <p><strong>Ngone NDAO</strong></p>
-            <p><strong>Mouhammad SONKO</strong></p>
         </div>
         """, unsafe_allow_html=True)
     
